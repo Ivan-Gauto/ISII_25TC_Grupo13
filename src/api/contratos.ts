@@ -26,14 +26,6 @@ export const contratosApi = {
     throw new Error(response.data.mensaje || 'Error al obtener contratos');
   },
 
-  obtenerPorId: async (id: string): Promise<Contrato> => {
-    const response = await api.get<ApiResponse<Contrato>>(`/contrato/${id}`);
-    if (response.data.success && response.data.data) {
-      return response.data.data;
-    }
-    throw new Error(response.data.mensaje || 'Error al obtener contrato');
-  },
-
   crear: async (contrato: CrearContratoRequest): Promise<string> => {
     const response = await api.post<ApiResponse<{ contratoId: string }>>('/contrato', contrato);
     if (response.data.success && response.data.data) {
