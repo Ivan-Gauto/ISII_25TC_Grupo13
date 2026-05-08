@@ -34,8 +34,8 @@ export const contratosApi = {
     throw new Error(response.data.mensaje || 'Error al crear contrato');
   },
 
-  rescindir: async (id: string): Promise<void> => {
-    const response = await api.put<ApiResponse<void>>(`/contrato/rescindir/${id}`);
+  rescindir: async (idContrato: string): Promise<void> => {
+    const response = await api.put<ApiResponse<void>>(`/contrato/rescindir/${idContrato}`);
     if (!response.data.success) {
       throw new Error(response.data.mensaje || 'Error al rescindir contrato');
     }
