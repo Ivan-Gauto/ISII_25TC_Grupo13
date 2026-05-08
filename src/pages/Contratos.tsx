@@ -86,7 +86,7 @@ export default function ContratosPage() {
 
   const fetchInquilinos = async () => {
     try {
-      const data = await inquilinosApi.listar();
+      const data = await inquilinosApi.ListarInquilinos();
       setInquilinos(data);
     } catch (err) {
       console.error('Error al cargar inquilinos:', err);
