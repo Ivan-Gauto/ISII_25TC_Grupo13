@@ -74,7 +74,7 @@ export default function InmueblesPage() {
         try {
             setLoading(true);
             setError(null);
-            const data = await inmueblesApi.listar();
+            const data = await inmueblesApi.listarInmuebles();
             setInmuebles(data);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Error al cargar inmuebles');
