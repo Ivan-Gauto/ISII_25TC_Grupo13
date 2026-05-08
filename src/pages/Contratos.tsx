@@ -28,7 +28,7 @@ import { formatCurrency, formatDate, toInputDate, isPorVencer } from '../utils/f
 
 
 const initialFormData: CrearContratoRequest = {
-  fechaInicio: toInputDate(),
+  fechaCreacion: toInputDate(),
   fechaFin: toInputDate(new Date(new Date().setMonth(new Date().getMonth() + 12))),
   cantidadCuotas: 12,
   precioCuota: 0,
@@ -144,7 +144,7 @@ export default function ContratosPage() {
     setFormError(null);
     
     // Validaciones básicas
-    if (!formData.fechaInicio) {
+    if (!formData.fechaCreacion) {
       setFormError('La fecha de inicio es obligatoria');
       return;
     }
@@ -183,9 +183,9 @@ export default function ContratosPage() {
     setFormData(prev => {
       const newData = { ...prev, [field]: value };
       
-      // Auto-calculate fechaFin if fechaInicio or cantidadCuotas change
-      if ((field === 'fechaInicio' || field === 'cantidadCuotas') && newData.fechaInicio && newData.cantidadCuotas > 0) {
-        const start = new Date(newData.fechaInicio);
+      // Auto-calculate fechaFin if fechaCreacion or cantidadCuotas change
+      if ((field === 'fechaCreacion' || field === 'cantidadCuotas') && newData.fechaCreacion && newData.cantidadCuotas > 0) {
+        const start = new Date(newData.fechaCreacion);
         if (!isNaN(start.getTime())) {
           start.setMonth(start.getMonth() + Number(newData.cantidadCuotas));
           newData.fechaFin = toInputDate(start);
@@ -365,7 +365,7 @@ export default function ContratosPage() {
                         <TableCell sx={{ color: '#fff', fontWeight: 500, py: 3, pl: 4 }}>{contrato.direccion || contrato.inmueble}</TableCell>
                         <TableCell sx={{ color: 'rgba(255,255,255,0.8)' }}>{contrato.inquilino}</TableCell>
                         <TableCell sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem' }}>
-                          {formatDate(contrato.fechaInicio)} — {formatDate(contrato.fechaFin)}
+                          {formatDate(contrato.fechaCreacion)} — {formatDate(contrato.fechaFin)}
                         </TableCell>
                         <TableCell sx={{ color: '#fff', fontWeight: 700 }}>{formatCurrency(contrato.precioCuota)}</TableCell>
                         <TableCell>
@@ -457,8 +457,8 @@ export default function ContratosPage() {
                   label="Fecha de Inicio"
                   type="date"
                   fullWidth
-                  value={formData.fechaInicio}
-                  onChange={(e) => handleFormChange('fechaInicio', e.target.value)}
+                  value={formData.fechaCreacion}
+                  onChange={(e) => handleFormChange('fechaCreacion', e.target.value)}
                   slotProps={{ inputLabel: { shrink: true } }}
                 />
               </Box>
