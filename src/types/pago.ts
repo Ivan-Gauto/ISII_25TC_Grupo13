@@ -12,7 +12,7 @@ export interface Pago {
   mora: number;
   diasAtraso: number;
   totalPagado: number;
-  estado: number;
+  estado: 'Pendiente' | 'Aprobado' | 'Rechazado' | 'Anulado';
   estadoTexto: string;
 }
 
@@ -30,16 +30,26 @@ export interface CuotaParaPago {
   estadoTexto: string;
 }
 
-export interface RegistrarPagoRequest {
-  contratoId: string;
-  cuotaId: string;
+export interface CuotaPendiente {
+  idCuota: string;
   nroCuota: number;
-  montoTotal: number;
-  fechaPago: string;
-  metodoPagoId: string;
-  moraCobrada: number;
+  periodo: string;
+  fechaVencimiento: string;
+  estado: string;
+  importeBase: number;
+  valorIndiceAplicado: number;
+  moraCalculada: number;
+  diasAtraso: number;
+  importeActualizado: number;
   otrosAdicionales: number;
-  descAdicionales: string;
+  totalFinal: number;
+}
+
+export interface RegistrarPagoRequest {
+  idCuota: string;
+  idMetodoPago: string;
+  otrosAdicionales: number;
+  descuentos: number;
 }
 
 export interface RegistrarPagoInternal {

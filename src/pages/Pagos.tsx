@@ -30,7 +30,7 @@ import { StatusChip } from '../components/common/StatusChip';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { ESTADOS_PAGO } from '../utils/constants';
 import { generatePaymentReceipt } from '../lib/pdf-generator';
-import type { Pago, CuotaParaPago, RegistrarPagoRequest } from '../types/pago';
+import type { Pago, CuotaPendiente, RegistrarPagoRequest } from '../types/pago';
 import type { Contrato } from '../types/contrato';
 import type { Inquilino } from '../types/inquilino';
 
@@ -46,15 +46,10 @@ interface Notificacion {
 }
 
 const initialFormData: RegistrarPagoRequest = {
-  contratoId: '',
-  cuotaId: '',
-  nroCuota: 0,
-  montoTotal: 0,
-  fechaPago: new Date().toISOString().split('T')[0],
-  metodoPagoId: '',
-  moraCobrada: 0,
+  idCuota: '',
+  idMetodoPago: 'efectivo', // Hardcodeado por ahora
   otrosAdicionales: 0,
-  descAdicionales: ''
+  descuentos: 0
 };
 
 export default function PagosPage() {
@@ -83,15 +78,17 @@ export default function PagosPage() {
   const [formError, setFormError] = useState<string | null>(null);
 
   const [selectedInquilino, setSelectedInquilino] = useState<string>('');
+  const [selectedContratoId, setSelectedContratoId] = useState<string>('');
   const [otrosAdicionales, setOtrosAdicionales] = useState<number>(0);
+  const [descuentos, setDescuentos] = useState<number>(0);
 
   // Success snackbar
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity?: 'success' | 'error' | 'warning' | 'info' }>({ open: false, message: '' });
 
   const [contratos, setContratos] = useState<Contrato[]>([]);
   const [inquilinos, setInquilinos] = useState<Inquilino[]>([]);
-  const [, setCuotasContrato] = useState<CuotaParaPago[]>([]);
-  const [cuotaActiva, setCuotaActiva] = useState<CuotaParaPago | null>(null);
+  const [cuotasContrato, setCuotasContrato] = useState<CuotaPendiente[]>([]);
+  const [cuotaActiva, setCuotaActiva] = useState<CuotaPendiente | null>(null);
 
   // NEW: Sistema de notificaciones
   const [notificaciones, setNotificaciones] = useState<Notificacion[]>([]);
@@ -165,6 +162,9 @@ export default function PagosPage() {
       setCuotasContrato([]);
       setCuotaActiva(null);
       setSelectedInquilino('');
+      setSelectedContratoId('');
+      setOtrosAdicionales(0);
+      setDescuentos(0);
       setFormData(initialFormData);
       setRegistrarDialog(true);
 
@@ -183,6 +183,9 @@ export default function PagosPage() {
 
       if (!id) {
         setContratos([]);
+        setSelectedContratoId('');
+        setCuotasContrato([]);
+        setCuotaActiva(null);
         return;
       }
 
@@ -296,33 +299,24 @@ export default function PagosPage() {
   const handleRegistrarPago = async () => {
     setFormError(null);
 
-    if (!formData.contratoId) {
+    if (!selectedContratoId) {
       setFormError('Debe seleccionar un contrato');
       return;
     }
-    if (!formData.cuotaId) {
-      setFormError('Debe seleccionar una cuota');
+    if (!cuotaActiva) {
+      setFormError('Debe seleccionar una cuota de la lista');
       return;
     }
     if (totalPagar <= 0) {
       setFormError('El monto debe ser mayor a 0');
       return;
     }
-    if (!formData.fechaPago) {
-      setFormError('La fecha de pago es obligatoria');
-      return;
-    }
 
     const pagoFinal: RegistrarPagoRequest = {
-      contratoId: formData.contratoId,
-      cuotaId: formData.cuotaId,
-      nroCuota: formData.nroCuota,
-      montoTotal: totalPagar,
-      fechaPago: formData.fechaPago,
-      metodoPagoId: formData.metodoPagoId,
-      moraCobrada: moraCalculada,
+      idCuota: cuotaActiva.idCuota,
+      idMetodoPago: 'efectivo', // Hardcodeado por ahora
       otrosAdicionales: otrosAdicionales || 0,
-      descAdicionales: ''
+      descuentos: descuentos || 0
     };
 
     try {
@@ -348,10 +342,10 @@ export default function PagosPage() {
   const filteredPagos = useMemo(() => {
     let result = pagos;
 
-    // Filter by Tab (Pago estado: 0=Anulado, 1=Confirmado, 2=Solicitud)
-    if (tabValue === 1) result = result.filter(p => p.estado === ESTADOS_PAGO.SOLICITUD);
-    else if (tabValue === 2) result = result.filter(p => p.estado === ESTADOS_PAGO.CONFIRMADO);
-    else if (tabValue === 3) result = result.filter(p => p.estado === ESTADOS_PAGO.ANULADO);
+    // Filter by Tab (Pago estado)
+    if (tabValue === 1) result = result.filter(p => p.estado === 'Pendiente');
+    else if (tabValue === 2) result = result.filter(p => p.estado === 'Aprobado');
+    else if (tabValue === 3) result = result.filter(p => p.estado === 'Anulado');
 
     // Filter by Search Term
     if (searchTerm) {
@@ -367,10 +361,13 @@ export default function PagosPage() {
   }, [pagos, tabValue, searchTerm]);
 
   // Selected contrato logic
-  const contratoActivo = useMemo(() => contratos.find(c => c.id === formData.contratoId), [contratos, formData.contratoId]);
+  const contratoActivo = useMemo(() => contratos.find(c => c.id === selectedContratoId), [contratos, selectedContratoId]);
   const importeBase = cuotaActiva ? cuotaActiva.importeBase : (contratoActivo ? contratoActivo.precioCuota : 0);
+  const importeActualizado = cuotaActiva ? (cuotaActiva.importeActualizado || importeBase) : importeBase;
   const moraCalculada = cuotaActiva ? cuotaActiva.moraCalculada : 0;
-  const totalPagar = importeBase + moraCalculada + (Number(otrosAdicionales) || 0);
+  const totalPagar = cuotaActiva
+    ? importeActualizado + moraCalculada + (Number(otrosAdicionales) || 0) - (Number(descuentos) || 0)
+    : 0;
 
   const resetDialogForm = () => {
     setRegistrarDialog(false);
@@ -578,12 +575,13 @@ export default function PagosPage() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {pago.estado === 0 && <StatusChip label="Anulado" type="error" variant="outlined" />}
-                          {pago.estado === 1 && <StatusChip label="Confirmado" type="success" />}
-                          {pago.estado === 2 && <StatusChip label="Solicitud" type="warning" />}
+                          {pago.estado === 'Anulado' && <StatusChip label="Anulado" type="error" variant="outlined" />}
+                          {pago.estado === 'Rechazado' && <StatusChip label="Rechazado" type="error" />}
+                          {pago.estado === 'Aprobado' && <StatusChip label="Confirmado" type="success" />}
+                          {pago.estado === 'Pendiente' && <StatusChip label="Solicitud" type="warning" />}
                         </TableCell>
                         <TableCell align="center" sx={{ pr: 4 }}>
-                          {pago.estado === 1 && (
+                          {pago.estado === 'Aprobado' && (
                             <>
                               <Tooltip title="Descargar Recibo">
                                 <IconButton
@@ -605,7 +603,7 @@ export default function PagosPage() {
                               </Tooltip>
                             </>
                           )}
-                          {pago.estado === 2 && (canConfirmar || canRechazar) && (
+                          {pago.estado === 'Pendiente' && (canConfirmar || canRechazar) && (
                             <>
                               <Tooltip title="Confirmar Pago">
                                 <IconButton
@@ -754,13 +752,16 @@ export default function PagosPage() {
                 size="small"
                 value={selectedInquilino}
                 onChange={(e) => {
-                  const dni = e.target.value as string;
-                  setSelectedInquilino(dni);
+                  const inquilinoId = e.target.value as string;
+
+                  console.log("Inquilino seleccionado:", inquilinoId);
+
+                  handleChangeInquilino(inquilinoId);
                   setFormData((prev: RegistrarPagoRequest) => ({ ...prev, contratoId: '' }));
                 }}
               >
                 {inquilinos.map(inq => (
-                  <MenuItem key={inq.dni} value={inq.dni}>
+                  <MenuItem key={inq.id} value={inq.id}>
                     {inq.nombreCompleto}
                   </MenuItem>
                 ))}
@@ -772,34 +773,21 @@ export default function PagosPage() {
                 fullWidth
                 size="small"
                 disabled={!selectedInquilino}
-                value={formData.contratoId || ''}
+                value={selectedContratoId || ''}
                 onChange={async (e) => {
                   const cId = e.target.value as string;
+                  setSelectedContratoId(cId);
 
                   if (!cId) {
                     setCuotasContrato([]);
                     setCuotaActiva(null);
-                    setFormData(prev => ({ ...prev, contratoId: '', cuotaId: '', nroCuota: 0 }));
                     return;
                   }
 
                   try {
-                    const cuotasData = await pagosApi.obtenerCuotasPorContrato(cId);
+                    const cuotasData = await pagosApi.obtenerCuotasPendientesPorContrato(cId);
                     setCuotasContrato(cuotasData);
-
-                    const cuotaPendiente = cuotasData.find(c => c.estadoTexto !== 'Pagada');
-                    if (cuotaPendiente) {
-                      setCuotaActiva(cuotaPendiente);
-                      setFormData(prev => ({
-                        ...prev,
-                        contratoId: cId,
-                        cuotaId: cuotaPendiente.cuotaId,
-                        nroCuota: cuotaPendiente.nroCuota
-                      }));
-                    } else {
-                      setCuotaActiva(null);
-                      setFormData(prev => ({ ...prev, contratoId: cId, cuotaId: '', nroCuota: 0 }));
-                    }
+                    setCuotaActiva(null);
                   } catch (err) {
                     console.error('Error al cargar cuotas:', err);
                     setCuotasContrato([]);
@@ -810,15 +798,15 @@ export default function PagosPage() {
                 {!selectedInquilino ? (
                   <MenuItem value="" disabled>Seleccione un inquilino primero</MenuItem>
                 ) : contratos
-                  .filter(c => c.dniInquilino === selectedInquilino)
+                  .filter(c => c.idPersonaInquilino === selectedInquilino)
                   .length === 0 ? (
                   <MenuItem value="" disabled>Sin contratos para este inquilino</MenuItem>
                 ) : (
                   contratos
-                    .filter(c => c.dniInquilino === selectedInquilino)
+                    .filter(c => c.idPersonaInquilino === selectedInquilino)
                     .map(c => (
                       <MenuItem key={c.id} value={c.id}>
-                        {c.direccion || c.inmueble}
+                        {c.direccion ? `${c.direccion} — ${c.inmueble}` : c.inmueble}
                       </MenuItem>
                     ))
                 )}
@@ -826,100 +814,166 @@ export default function PagosPage() {
             </Box>
           </Box>
 
-          <Box sx={{ mb: 4 }}>
-            <Typography sx={{ mb: 1, fontWeight: 700, fontSize: '0.875rem' }}>Otros adicionales</Typography>
-            <TextField
-              size="small"
-              fullWidth
-              type="number"
-              value={otrosAdicionales || ''}
-              onChange={(e) => setOtrosAdicionales(parseFloat(e.target.value) || 0)}
-            />
-          </Box>
+          {cuotasContrato.length > 0 && (
+            <Box sx={{ mb: 4 }}>
+              <Typography sx={{ mb: 1, fontWeight: 700, fontSize: '0.875rem' }}>Seleccione una cuota pendiente</Typography>
+              <TableContainer component={Card} variant="outlined" sx={{ bgcolor: 'transparent', borderColor: 'rgba(255,255,255,0.1)' }}>
+                <Table size="small">
+                  <TableHead sx={{ bgcolor: 'rgba(255,255,255,0.05)' }}>
+                    <TableRow>
+                      <TableCell>Nro</TableCell>
+                      <TableCell>Periodo</TableCell>
+                      <TableCell>Vto.</TableCell>
+                      <TableCell>Estado</TableCell>
+                      <TableCell align="right">Monto Base</TableCell>
+                      <TableCell align="right">Monto Act.</TableCell>
+                      <TableCell align="right">Mora</TableCell>
+                      <TableCell align="right">Total</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {cuotasContrato.map((cuota) => (
+                      <TableRow
+                        key={cuota.idCuota}
+                        hover
+                        onClick={() => setCuotaActiva(cuota)}
+                        sx={{
+                          cursor: 'pointer',
+                          bgcolor: cuotaActiva?.idCuota === cuota.idCuota ? 'rgba(67, 97, 238, 0.1)' : 'transparent',
+                          borderLeft: cuota.estado === 'Vencida' ? '4px solid #ef4444' : '4px solid transparent',
+                          transition: 'all 0.2s ease',
+                          '&:hover': {
+                            bgcolor: cuotaActiva?.idCuota === cuota.idCuota ? 'rgba(67, 97, 238, 0.15)' : 'rgba(255,255,255,0.05)',
+                          }
+                        }}
+                      >
+                        <TableCell sx={{ fontWeight: 600 }}>{cuota.nroCuota}</TableCell>
+                        <TableCell>{cuota.periodo}</TableCell>
+                        <TableCell>{new Date(cuota.fechaVencimiento).toLocaleDateString('es-AR')}</TableCell>
+                        <TableCell>
+                          <Chip
+                            label={cuota.estado}
+                            size="small"
+                            sx={{
+                              bgcolor: cuota.estado === 'Vencida' ? '#ef4444' : '#f59e0b',
+                              color: '#000',
+                              fontWeight: 700,
+                              height: 20,
+                              fontSize: '0.7rem'
+                            }}
+                          />
+                          {cuota.diasAtraso > 0 && (
+                            <Typography variant="caption" color="error.main" sx={{ display: 'block', mt: 0.5, fontWeight: 600 }}>
+                              {cuota.diasAtraso} dias atraso
+                            </Typography>
+                          )}
+                        </TableCell>
+                        <TableCell align="right">{formatCurrency(cuota.importeBase)}</TableCell>
+                        <TableCell align="right">{formatCurrency(cuota.importeActualizado)}</TableCell>
+                        <TableCell align="right">{formatCurrency(cuota.moraCalculada)}</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700 }}>
+                          {formatCurrency(cuota.totalFinal || 0)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Box>
+          )}
 
-          <Box>
-            <Typography variant="h6" sx={{ fontWeight: 800, mb: 1 }}>Datos del pago</Typography>
-            <Typography sx={{ color: 'error.main', fontWeight: 800, fontSize: '0.875rem', mb: 3 }}>
-              ATENCION! verificar los datos antes de registrar el pago, en caso contrario debera anular y rehacer el mismo
-            </Typography>
-
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <PersonIcon fontSize="small" color="action" />
-                  <Typography variant="body2" color="text.secondary">Inquilino</Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 700 }}>{contratoActivo?.inquilino || '-'}</Typography>
-                </Box>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <HomeWorkIcon fontSize="small" color="action" />
-                  <Typography variant="body2" color="text.secondary">Propietario</Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 700 }}>-</Typography>
-                </Box>
-              </Box>
-
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 200 }}>
-                  <EditIcon fontSize="small" color="action" />
-                  <Typography variant="body2" color="text.secondary">Nro. de cuota</Typography>
+          {cuotaActiva && (
+            <>
+              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3, mb: 4 }}>
+                <Box>
+                  <Typography sx={{ mb: 1, fontWeight: 700, fontSize: '0.875rem' }}>Otros adicionales</Typography>
                   <TextField
-                    variant="standard"
-                    value={formData.nroCuota}
-                    slotProps={{ input: { readOnly: true, disableUnderline: true } }}
-                    sx={{ width: 40, '& input': { p: 0, fontWeight: 700, fontSize: '0.875rem' } }}
+                    size="small"
+                    fullWidth
+                    type="number"
+                    value={otrosAdicionales || ''}
+                    onChange={(e) => setOtrosAdicionales(parseFloat(e.target.value) || 0)}
                   />
                 </Box>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <CalendarIcon fontSize="small" color="action" />
-                  <Typography variant="body2" color="text.secondary">Vencimiento</Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                    {cuotaActiva?.fechaVencimiento ? new Date(cuotaActiva.fechaVencimiento).toLocaleDateString('es-AR') : '-'}
-                  </Typography>
+                <Box>
+                  <Typography sx={{ mb: 1, fontWeight: 700, fontSize: '0.875rem' }}>Descuentos</Typography>
+                  <TextField
+                    size="small"
+                    fullWidth
+                    type="number"
+                    value={descuentos || ''}
+                    onChange={(e) => setDescuentos(parseFloat(e.target.value) || 0)}
+                  />
                 </Box>
               </Box>
 
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 200 }}>
-                  <CalendarIcon fontSize="small" color="action" />
-                  <Typography variant="body2" color="text.secondary">Periodo de cuota</Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 700 }}>{cuotaActiva?.periodo || '-'}</Typography>
+              <Box sx={{ bgcolor: 'rgba(255,255,255,0.02)', p: 3, borderRadius: 2, border: '1px solid rgba(255,255,255,0.05)' }}>
+                <Typography variant="h6" sx={{ fontWeight: 800, mb: 2 }}>Resumen del pago</Typography>
+
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <PersonIcon fontSize="small" color="action" />
+                      <Typography variant="body2" color="text.secondary">Inquilino</Typography>
+                    </Box>
+                    <Typography variant="body2" sx={{ fontWeight: 700 }}>{contratoActivo?.inquilino || '-'}</Typography>
+                  </Box>
+
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <EditIcon fontSize="small" color="action" />
+                      <Typography variant="body2" color="text.secondary">Nro. Cuota / Periodo</Typography>
+                    </Box>
+                    <Typography variant="body2" sx={{ fontWeight: 700 }}>{cuotaActiva.nroCuota} / {cuotaActiva.periodo}</Typography>
+                  </Box>
+
+                  <Box sx={{ height: 1, bgcolor: 'rgba(255,255,255,0.1)', my: 1 }} />
+
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography variant="body2" color="text.secondary">Importe base</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>$ {cuotaActiva.importeBase.toLocaleString('es-AR')}</Typography>
+                  </Box>
+
+                  {cuotaActiva.valorIndiceAplicado > 0 && cuotaActiva.valorIndiceAplicado !== 1 && (
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Typography variant="body2" color="text.secondary">Indice aplicado ({(cuotaActiva.valorIndiceAplicado * 100).toFixed(2)}%)</Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        + $ {(cuotaActiva.importeActualizado - cuotaActiva.importeBase).toLocaleString('es-AR')}
+                      </Typography>
+                    </Box>
+                  )}
+
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography variant="body2" color="text.secondary">Adicional por mora</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600, color: cuotaActiva.moraCalculada > 0 ? 'error.main' : 'inherit' }}>
+                      + $ {moraCalculada.toLocaleString('es-AR')}
+                    </Typography>
+                  </Box>
+
+                  {otrosAdicionales > 0 && (
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Typography variant="body2" color="text.secondary">Otros adicionales</Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>+ $ {otrosAdicionales.toLocaleString('es-AR')}</Typography>
+                    </Box>
+                  )}
+
+                  {descuentos > 0 && (
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Typography variant="body2" color="text.secondary">Descuentos</Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 600, color: 'success.main' }}>- $ {descuentos.toLocaleString('es-AR')}</Typography>
+                    </Box>
+                  )}
+
+                  <Box sx={{ height: 1, bgcolor: 'rgba(255,255,255,0.1)', my: 1 }} />
+
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>TOTAL A PAGAR</Typography>
+                    <Typography variant="h5" sx={{ fontWeight: 800, color: 'primary.main' }}>$ {totalPagar.toLocaleString('es-AR')}</Typography>
+                  </Box>
                 </Box>
-                <Chip
-                  label={cuotaActiva?.estado === 1 ? 'Vencida' : cuotaActiva?.estado === 2 ? 'Pagada' : 'Pendiente'}
-                  sx={{
-                    bgcolor: cuotaActiva?.estado === 1 ? '#ff4d4f' : cuotaActiva?.estado === 2 ? '#10B981' : '#FFFF00',
-                    color: '#000',
-                    fontWeight: 800,
-                    borderRadius: 1
-                  }}
-                  size="small"
-                />
               </Box>
-
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
-                <MoneyIcon fontSize="small" color="action" />
-                <Typography variant="body2" color="text.secondary" sx={{ minWidth: 150 }}>Importe base</Typography>
-                <Typography variant="body2" sx={{ fontWeight: 800 }}>$ {importeBase.toLocaleString('es-AR')}</Typography>
-              </Box>
-
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <MoneyIcon fontSize="small" color="action" />
-                <Typography variant="body2" color="text.secondary" sx={{ minWidth: 150 }}>Adicional por mora</Typography>
-                <Typography variant="body2" sx={{ fontWeight: 800 }}>$ {moraCalculada.toLocaleString('es-AR')}</Typography>
-              </Box>
-
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <MoneyIcon fontSize="small" color="action" />
-                <Typography variant="body2" color="text.secondary" sx={{ minWidth: 150 }}>Otros adicionales</Typography>
-                <Typography variant="body2" sx={{ fontWeight: 800 }}>$ {(otrosAdicionales || 0).toLocaleString('es-AR')}</Typography>
-              </Box>
-
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
-                <MoneyIcon fontSize="small" color="action" />
-                <Typography variant="body2" sx={{ minWidth: 150, color: 'text.secondary' }}>Total a pagar</Typography>
-                <Typography variant="body2" sx={{ fontWeight: 800 }}>$ {totalPagar.toLocaleString('es-AR')}</Typography>
-              </Box>
-            </Box>
-          </Box>
+            </>
+          )}
         </DialogContent>
         <DialogActions sx={{ p: 4, pt: 2, display: 'flex', gap: 2 }}>
           <Button

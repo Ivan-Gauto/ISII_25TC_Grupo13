@@ -1,5 +1,6 @@
 export interface Contrato {
   id: string;
+  idPersonaInquilino: string;
   inquilino: string;
   dniInquilino: string;
   direccion: string;
