@@ -3,7 +3,7 @@ import {
   Box, Typography, Container, Card, CardContent, TextField,
   Table, TableBody, TableCell, TableContainer, TableHead,
   TableRow, Chip, IconButton, Tooltip, CircularProgress, Alert, Button, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Snackbar,
-  MenuItem, Select, Badge
+  MenuItem, Select, Badge, Menu
 } from '@mui/material';
 import {
   ReceiptOutlined as ReceiptIcon,
@@ -18,7 +18,8 @@ import {
   CheckCircleOutlined as ApproveIcon,
   RemoveCircleOutlined as RejectIcon,
   NotificationsOutlined as NotificationsIcon,
-  DeleteOutlined as DeleteIcon
+  DeleteOutlined as DeleteIcon,
+  ArrowDropDown as ArrowDropDownIcon
 } from '@mui/icons-material';
 import { pagosApi } from '../api/pagos';
 import { contratosApi } from '../api/contratos';
@@ -47,7 +48,7 @@ interface Notificacion {
 
 const initialFormData: RegistrarPagoRequest = {
   idCuota: '',
-  idMetodoPago: 'efectivo', // Hardcodeado por ahora
+  idMetodoPago: '86E9463F-CB4B-46D4-AF34-16A1A6E3B988', // Por defecto Efectivo
   otrosAdicionales: 0,
   descuentos: 0
 };
@@ -70,12 +71,14 @@ export default function PagosPage() {
 
   // NEW: Estado para motivo de rechazo
   const [motivoRechazo, setMotivoRechazo] = useState('');
+  const [motivoAnulacion, setMotivoAnulacion] = useState('');
 
   // Dialog state for registering payment
   const [registrarDialog, setRegistrarDialog] = useState(false);
   const [registrarLoading, setRegistrarLoading] = useState(false);
   const [formData, setFormData] = useState<RegistrarPagoRequest>(initialFormData);
   const [formError, setFormError] = useState<string | null>(null);
+  const [metodoPagoAnchorEl, setMetodoPagoAnchorEl] = useState<null | HTMLElement>(null);
 
   const [selectedInquilino, setSelectedInquilino] = useState<string>('');
   const [selectedContratoId, setSelectedContratoId] = useState<string>('');
@@ -208,10 +211,15 @@ export default function PagosPage() {
 
   const handleAnular = async () => {
     if (!anularDialog.id) return;
+    if (!motivoAnulacion.trim()) {
+      setSnackbar({ open: true, message: 'Debe ingresar un motivo de anulación', severity: 'warning' });
+      return;
+    }
     try {
       setDialogLoading(true);
-      await pagosApi.anular(anularDialog.id);
+      await pagosApi.anular(anularDialog.id, motivoAnulacion);
       setAnularDialog({ open: false, id: null });
+      setMotivoAnulacion('');
       fetchPagos();
       setSnackbar({ open: true, message: 'Pago anulado exitosamente', severity: 'success' });
     } catch (err) {
@@ -314,7 +322,7 @@ export default function PagosPage() {
 
     const pagoFinal: RegistrarPagoRequest = {
       idCuota: cuotaActiva.idCuota,
-      idMetodoPago: 'efectivo', // Hardcodeado por ahora
+      idMetodoPago: formData.idMetodoPago || '86E9463F-CB4B-46D4-AF34-16A1A6E3B988',
       otrosAdicionales: otrosAdicionales || 0,
       descuentos: descuentos || 0
     };
@@ -490,6 +498,32 @@ export default function PagosPage() {
         </Box>
       </Box>
 
+      {/* Barra de Métricas Sobria */}
+      <Box sx={{ 
+        display: 'flex', 
+        gap: 6, 
+        mb: 6, 
+        pb: 4, 
+        borderBottom: '1px solid rgba(255,255,255,0.05)' 
+      }}>
+        <Box>
+          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.3)', fontWeight: 700, letterSpacing: 1 }}>TOTAL</Typography>
+          <Typography variant="h4" sx={{ color: '#fff', fontWeight: 300 }}>{pagos.length}</Typography>
+        </Box>
+        <Box>
+          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.3)', fontWeight: 700, letterSpacing: 1 }}>CONFIRMADOS</Typography>
+          <Typography variant="h4" sx={{ color: '#4caf50', fontWeight: 300 }}>{pagos.filter(p => p.estado === 'Aprobado').length}</Typography>
+        </Box>
+        <Box>
+          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.3)', fontWeight: 700, letterSpacing: 1 }}>EN SOLICITUD</Typography>
+          <Typography variant="h4" sx={{ color: '#ff9800', fontWeight: 300 }}>{pagos.filter(p => p.estado === 'Pendiente').length}</Typography>
+        </Box>
+        <Box>
+          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.3)', fontWeight: 700, letterSpacing: 1 }}>ANULADOS</Typography>
+          <Typography variant="h4" sx={{ color: 'rgba(255,255,255,0.15)', fontWeight: 300 }}>{pagos.filter(p => p.estado === 'Anulado').length}</Typography>
+        </Box>
+      </Box>
+
       <Card sx={{ mb: 4, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)', bgcolor: '#0A0A0A', boxShadow: 'none', borderRadius: 2 }}>
         <CardContent sx={{ p: 0 }}>
           <Box sx={{ p: 3, display: 'flex', gap: 2, alignItems: 'center' }}>
@@ -582,48 +616,26 @@ export default function PagosPage() {
                         </TableCell>
                         <TableCell align="center" sx={{ pr: 4 }}>
                           {pago.estado === 'Aprobado' && (
-                            <>
-                              <Tooltip title="Descargar Recibo">
-                                <IconButton
-                                  color="primary"
-                                  sx={{ mr: 1, bgcolor: 'rgba(67, 97, 238, 0.1)' }}
-                                  onClick={() => handleDescargarRecibo(pago)}
-                                >
-                                  <ReceiptIcon />
-                                </IconButton>
-                              </Tooltip>
-                              <Tooltip title="Anular Pago">
-                                <IconButton
-                                  color="error"
-                                  sx={{ bgcolor: 'rgba(239, 68, 68, 0.1)' }}
-                                  onClick={() => setAnularDialog({ open: true, id: pago.id })}
-                                >
-                                  <CancelIcon />
-                                </IconButton>
-                              </Tooltip>
-                            </>
+                            <Tooltip title="Descargar Recibo">
+                              <IconButton
+                                color="primary"
+                                sx={{ mr: 1, bgcolor: 'rgba(67, 97, 238, 0.1)' }}
+                                onClick={() => handleDescargarRecibo(pago)}
+                              >
+                                <ReceiptIcon />
+                              </IconButton>
+                            </Tooltip>
                           )}
-                          {pago.estado === 'Pendiente' && (canConfirmar || canRechazar) && (
-                            <>
-                              <Tooltip title="Confirmar Pago">
-                                <IconButton
-                                  color="success"
-                                  sx={{ mr: 1, bgcolor: 'rgba(16, 185, 129, 0.1)' }}
-                                  onClick={() => setActionDialog({ open: true, id: pago.id, action: 'confirmar' })}
-                                >
-                                  <ApproveIcon />
-                                </IconButton>
-                              </Tooltip>
-                              <Tooltip title="Rechazar Solicitud">
-                                <IconButton
-                                  color="error"
-                                  sx={{ bgcolor: 'rgba(239, 68, 68, 0.1)' }}
-                                  onClick={() => setActionDialog({ open: true, id: pago.id, action: 'rechazar' })}
-                                >
-                                  <RejectIcon />
-                                </IconButton>
-                              </Tooltip>
-                            </>
+                          {(pago.estado === 'Aprobado' || pago.estado === 'Pendiente') && (
+                            <Tooltip title="Anular Pago">
+                              <IconButton
+                                color="error"
+                                sx={{ bgcolor: 'rgba(239, 68, 68, 0.1)' }}
+                                onClick={() => setAnularDialog({ open: true, id: pago.id })}
+                              >
+                                <CancelIcon />
+                              </IconButton>
+                            </Tooltip>
                           )}
                         </TableCell>
                       </TableRow>
@@ -644,9 +656,21 @@ export default function PagosPage() {
       >
         <DialogTitle sx={{ fontWeight: 800 }}>Anular Pago</DialogTitle>
         <DialogContent>
-          <DialogContentText>
-            ¿Estas seguro que deseas anular este pago? El estado volvera a pendiente y de ser necesario deberas emitir notas de credito correspondientes si fue facturado electronicamente.
+          <DialogContentText sx={{ mb: 2 }}>
+            ¿Estas seguro que deseas anular este pago? La cuota volverá a estar pendiente de pago.
           </DialogContentText>
+          <TextField
+            autoFocus
+            fullWidth
+            multiline
+            rows={3}
+            label="Motivo de la anulación"
+            placeholder="Ej: Pago duplicado, error en el monto..."
+            value={motivoAnulacion}
+            onChange={(e) => setMotivoAnulacion(e.target.value)}
+            error={!motivoAnulacion.trim() && dialogLoading}
+            helperText={!motivoAnulacion.trim() && dialogLoading ? "El motivo es obligatorio" : ""}
+          />
         </DialogContent>
         <DialogActions sx={{ p: 2, pt: 0 }}>
           <Button
@@ -884,7 +908,7 @@ export default function PagosPage() {
 
           {cuotaActiva && (
             <>
-              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3, mb: 4 }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 3, mb: 4 }}>
                 <Box>
                   <Typography sx={{ mb: 1, fontWeight: 700, fontSize: '0.875rem' }}>Otros adicionales</Typography>
                   <TextField
@@ -904,6 +928,21 @@ export default function PagosPage() {
                     value={descuentos || ''}
                     onChange={(e) => setDescuentos(parseFloat(e.target.value) || 0)}
                   />
+                </Box>
+                <Box>
+                  <Typography sx={{ mb: 1, fontWeight: 700, fontSize: '0.875rem' }}>Método de Pago</Typography>
+                  <Select
+                    fullWidth
+                    size="small"
+                    value={formData.idMetodoPago || '86E9463F-CB4B-46D4-AF34-16A1A6E3B988'}
+                    onChange={(e) => setFormData(prev => ({ ...prev, idMetodoPago: e.target.value as string }))}
+                  >
+                    <MenuItem value="86E9463F-CB4B-46D4-AF34-16A1A6E3B988">Efectivo</MenuItem>
+                    <MenuItem value="18EFAC4B-7ECE-45BE-869B-2EBBE7DFEB84">Transferencia</MenuItem>
+                    <MenuItem value="AAD9485D-0880-43D1-84BE-691121737A8E">Depósito</MenuItem>
+                    <MenuItem value="0A4046B9-9368-4CF8-BC68-85658D8FA88F">Cheque</MenuItem>
+                    <MenuItem value="B7A7C600-82EC-496F-A671-8F6B765FD446">MercadoPago</MenuItem>
+                  </Select>
                 </Box>
               </Box>
 
@@ -925,6 +964,21 @@ export default function PagosPage() {
                       <Typography variant="body2" color="text.secondary">Nro. Cuota / Periodo</Typography>
                     </Box>
                     <Typography variant="body2" sx={{ fontWeight: 700 }}>{cuotaActiva.nroCuota} / {cuotaActiva.periodo}</Typography>
+                  </Box>
+
+                  <Box sx={{ height: 1, bgcolor: 'rgba(255,255,255,0.1)', my: 1 }} />
+
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <PaymentIcon fontSize="small" color="action" />
+                      <Typography variant="body2" color="text.secondary">Método de Pago</Typography>
+                    </Box>
+                    <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                      {formData.idMetodoPago === '18EFAC4B-7ECE-45BE-869B-2EBBE7DFEB84' ? 'Transferencia' :
+                       formData.idMetodoPago === 'AAD9485D-0880-43D1-84BE-691121737A8E' ? 'Depósito' :
+                       formData.idMetodoPago === '0A4046B9-9368-4CF8-BC68-85658D8FA88F' ? 'Cheque' :
+                       formData.idMetodoPago === 'B7A7C600-82EC-496F-A671-8F6B765FD446' ? 'MercadoPago' : 'Efectivo'}
+                    </Typography>
                   </Box>
 
                   <Box sx={{ height: 1, bgcolor: 'rgba(255,255,255,0.1)', my: 1 }} />
