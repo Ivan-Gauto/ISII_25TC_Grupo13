@@ -11,19 +11,22 @@ import {
     Delete as DeleteIcon
 } from '@mui/icons-material';
 import { inmueblesApi } from '../api/inmuebles';
+import { ubicacionesApi } from '../api/ubicaciones';
 import type { Inmueble } from '../types/inmueble';
+import type { Provincia } from '../types/provincia';
+import type { Localidad } from '../types/localidad';
 import { SearchInput } from '../components/common/SearchInput';
 import { StatusChip } from '../components/common/StatusChip';
 
-// Interfaz para el formulario de crear/editar inmueble
 interface InmuebleFormData {
     id?: string;
     calle: string;
     altura: string;
+    idProvincia: string;
+    idLocalidad: string;
     descripcion: string;
     disponibilidad: boolean;
     idTipoInmueble: string;
-    // Propietario - por ahora usaremos campos de texto hasta que tengas el endpoint
     idPersonaPropietario: string;
     idRolClientePropietario: string;
 }
@@ -31,6 +34,8 @@ interface InmuebleFormData {
 const initialFormData: InmuebleFormData = {
     calle: '',
     altura: '',
+    idProvincia: '',
+    idLocalidad: '',
     descripcion: '',
     disponibilidad: true,
     idTipoInmueble: '',
@@ -38,7 +43,6 @@ const initialFormData: InmuebleFormData = {
     idRolClientePropietario: ''
 };
 
-// Mock de tipos de inmueble - reemplazar cuando tengas el endpoint
 const TIPOS_INMUEBLE_MOCK = [
     { id: '1', nombre: 'Departamento' },
     { id: '2', nombre: 'Casa' },
@@ -52,22 +56,22 @@ export default function InmueblesPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    // Filtering state
-    const [searchTerm, setSearchTerm] = useState('');
-    const [filterDisponibilidad, setFilterDisponibilidad] = useState<number>(0); // 0=Todos, 1=Disponibles, 2=Ocupados
+    const [provincias, setProvincias] = useState<Provincia[]>([]);
+    const [localidades, setLocalidades] = useState<Localidad[]>([]);
+    const [loadingLocalidades, setLoadingLocalidades] = useState(false);
 
-    // Dialog state for creating/editing
+    const [searchTerm, setSearchTerm] = useState('');
+    const [filterDisponibilidad, setFilterDisponibilidad] = useState<number>(0);
+
     const [formDialog, setFormDialog] = useState(false);
     const [formLoading, setFormLoading] = useState(false);
     const [formData, setFormData] = useState<InmuebleFormData>(initialFormData);
     const [formError, setFormError] = useState<string | null>(null);
     const [isEditing, setIsEditing] = useState(false);
 
-    // Dialog state for confirming deletion
     const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
     const [deleteLoading, setDeleteLoading] = useState(false);
 
-    // Success snackbar
     const [snackbar, setSnackbar] = useState<{ open: boolean; message: string }>({ open: false, message: '' });
 
     const fetchInmuebles = async () => {
@@ -83,28 +87,68 @@ export default function InmueblesPage() {
         }
     };
 
+    const fetchProvincias = async () => {
+        try {
+            const data = await ubicacionesApi.listarProvincias();
+            setProvincias(data);
+        } catch {
+            // no bloquear el formulario si falla
+        }
+    };
+
     useEffect(() => {
         fetchInmuebles();
+        fetchProvincias();
     }, []);
 
-    const openFormDialog = (inmueble?: Inmueble) => {
+    const handleProvinciaChange = async (idProvincia: string) => {
+        setFormData(prev => ({ ...prev, idProvincia, idLocalidad: '' }));
+        if (!idProvincia) {
+            setLocalidades([]);
+            return;
+        }
+        setLoadingLocalidades(true);
+        try {
+            const data = await ubicacionesApi.listarLocalidades(idProvincia);
+            setLocalidades(data);
+        } catch {
+            setLocalidades([]);
+        } finally {
+            setLoadingLocalidades(false);
+        }
+    };
+
+    const openFormDialog = async (inmueble?: Inmueble) => {
         if (inmueble) {
-            // Modo edición
             setIsEditing(true);
+            const idProvincia = inmueble.idProvincia || '';
             setFormData({
                 id: inmueble.id,
-                calle: inmueble.direccion || '',
-                altura: '',
+                calle: inmueble.direccion?.split(' ')[0] || '',
+                altura: inmueble.direccion?.split(' ')[1] || '',
+                idProvincia,
+                idLocalidad: inmueble.idLocalidad || '',
                 descripcion: inmueble.descripcion || '',
                 disponibilidad: inmueble.disponibilidad,
                 idTipoInmueble: inmueble.idTipoInmueble || '',
                 idPersonaPropietario: inmueble.idPersonaPropietario || '',
                 idRolClientePropietario: inmueble.idRolClientePropietario || ''
             });
+            if (idProvincia) {
+                setLoadingLocalidades(true);
+                try {
+                    const data = await ubicacionesApi.listarLocalidades(idProvincia);
+                    setLocalidades(data);
+                } catch {
+                    setLocalidades([]);
+                } finally {
+                    setLoadingLocalidades(false);
+                }
+            }
         } else {
-            // Modo creación
             setIsEditing(false);
             setFormData(initialFormData);
+            setLocalidades([]);
         }
         setFormError(null);
         setFormDialog(true);
@@ -117,7 +161,6 @@ export default function InmueblesPage() {
     const handleSave = async () => {
         setFormError(null);
 
-        // Validaciones básicas
         if (!formData.calle.trim()) {
             setFormError('La calle es obligatoria');
             return;
@@ -134,17 +177,19 @@ export default function InmueblesPage() {
         try {
             setFormLoading(true);
 
-            // Construir el objeto para enviar al backend
             const inmuebleData: Inmueble = {
                 id: formData.id,
-                idDireccion: '', // Se creará en el backend
+                idDireccion: '',
                 descripcion: formData.descripcion,
                 disponibilidad: formData.disponibilidad,
                 idTipoInmueble: formData.idTipoInmueble,
                 idPersonaPropietario: formData.idPersonaPropietario,
                 idRolClientePropietario: formData.idRolClientePropietario,
-                // Campos adicionales para la dirección
-                direccion: `${formData.calle} ${formData.altura}`.trim()
+                oDireccion: {
+                    calle: formData.calle,
+                    altura: formData.altura,
+                    idLocalidad: formData.idLocalidad || undefined,
+                }
             };
 
             if (isEditing && formData.id) {
@@ -180,28 +225,26 @@ export default function InmueblesPage() {
         }
     };
 
-    // Métricas
     const totalInmuebles = inmuebles.length;
     const disponibles = inmuebles.filter(i => i.disponibilidad).length;
     const ocupados = inmuebles.filter(i => !i.disponibilidad).length;
     const inactivos = inmuebles.filter(i => i.estado === 'Inactivo').length;
 
-    // Filtrado
     const filteredInmuebles = useMemo(() => {
         let result = inmuebles;
 
-        // Filtrar por disponibilidad
         if (filterDisponibilidad === 1) {
             result = result.filter(i => i.disponibilidad);
         } else if (filterDisponibilidad === 2) {
             result = result.filter(i => !i.disponibilidad);
         }
 
-        // Filtrar por término de búsqueda
         if (searchTerm) {
             const lowerSearch = searchTerm.toLowerCase();
             result = result.filter(i =>
                 i.direccion?.toLowerCase().includes(lowerSearch) ||
+                i.localidad?.toLowerCase().includes(lowerSearch) ||
+                i.provincia?.toLowerCase().includes(lowerSearch) ||
                 i.descripcion?.toLowerCase().includes(lowerSearch) ||
                 i.propietarioNombreCompleto?.toLowerCase().includes(lowerSearch)
             );
@@ -212,7 +255,6 @@ export default function InmueblesPage() {
 
     return (
         <Container maxWidth="xl" sx={{ py: 6 }}>
-            {/* Header Minimalista */}
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 6 }}>
                 <Box>
                     <Typography variant="h3" sx={{ fontWeight: 800, color: '#fff', letterSpacing: '-1.5px' }}>
@@ -244,7 +286,6 @@ export default function InmueblesPage() {
                 </Button>
             </Box>
 
-            {/* Barra de Métricas Sobria */}
             <Box sx={{
                 display: 'flex',
                 gap: 6,
@@ -270,12 +311,11 @@ export default function InmueblesPage() {
                 </Box>
             </Box>
 
-            {/* Controles y Tabla */}
             <Box sx={{ width: '100%' }}>
                 <Box sx={{ display: 'flex', gap: 2, mb: 4 }}>
                     <Box sx={{ flex: 1 }}>
                         <SearchInput
-                            placeholder="Buscar por dirección, descripción o propietario..."
+                            placeholder="Buscar por dirección, localidad, provincia, descripción o propietario..."
                             value={searchTerm}
                             onChange={setSearchTerm}
                         />
@@ -327,8 +367,15 @@ export default function InmueblesPage() {
                                     ) : (
                                         filteredInmuebles.map((inmueble) => (
                                             <TableRow key={inmueble.id} sx={{ '&:hover': { bgcolor: 'rgba(255,255,255,0.02)' } }}>
-                                                <TableCell sx={{ color: '#fff', fontWeight: 500, py: 3, pl: 4 }}>
-                                                    {inmueble.direccion || 'Sin dirección'}
+                                                <TableCell sx={{ py: 3, pl: 4 }}>
+                                                    <Typography sx={{ color: '#fff', fontWeight: 500, fontSize: '0.9rem' }}>
+                                                        {inmueble.direccion || 'Sin dirección'}
+                                                    </Typography>
+                                                    {(inmueble.localidad || inmueble.provincia) && (
+                                                        <Typography sx={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.78rem', mt: 0.3 }}>
+                                                            {[inmueble.localidad, inmueble.provincia].filter(Boolean).join(', ')}
+                                                        </Typography>
+                                                    )}
                                                 </TableCell>
                                                 <TableCell sx={{ color: 'rgba(255,255,255,0.8)' }}>
                                                     {inmueble.descripcion || '-'}
@@ -371,7 +418,7 @@ export default function InmueblesPage() {
                 </Box>
             </Box>
 
-            {/* Dialog for Creating/Editing Inmueble */}
+            {/* Dialog Crear/Editar */}
             <Dialog
                 open={formDialog}
                 onClose={() => !formLoading && setFormDialog(false)}
@@ -391,7 +438,7 @@ export default function InmueblesPage() {
                         )}
 
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
-                            {/* Dirección */}
+                            {/* Calle y Altura */}
                             <Box sx={{ flex: '1 1 60%', minWidth: 200 }}>
                                 <TextField
                                     label="Calle"
@@ -409,6 +456,50 @@ export default function InmueblesPage() {
                                     onChange={(e) => handleFormChange('altura', e.target.value)}
                                     placeholder="Ej: 1234"
                                 />
+                            </Box>
+
+                            {/* Provincia */}
+                            <Box sx={{ flex: '1 1 45%', minWidth: 200 }}>
+                                <TextField
+                                    select
+                                    label="Provincia"
+                                    fullWidth
+                                    value={formData.idProvincia}
+                                    onChange={(e) => handleProvinciaChange(e.target.value)}
+                                >
+                                    <MenuItem value="">Sin provincia</MenuItem>
+                                    {provincias.map((prov) => (
+                                        <MenuItem key={prov.idProvincia} value={prov.idProvincia}>
+                                            {prov.nombre}
+                                        </MenuItem>
+                                    ))}
+                                </TextField>
+                            </Box>
+
+                            {/* Localidad */}
+                            <Box sx={{ flex: '1 1 45%', minWidth: 200 }}>
+                                <TextField
+                                    select
+                                    label="Localidad"
+                                    fullWidth
+                                    value={formData.idLocalidad}
+                                    onChange={(e) => handleFormChange('idLocalidad', e.target.value)}
+                                    disabled={!formData.idProvincia || loadingLocalidades}
+                                    slotProps={{
+                                        input: {
+                                            endAdornment: loadingLocalidades
+                                                ? <CircularProgress size={18} sx={{ mr: 1 }} />
+                                                : undefined
+                                        }
+                                    }}
+                                >
+                                    <MenuItem value="">Sin localidad</MenuItem>
+                                    {localidades.map((loc) => (
+                                        <MenuItem key={loc.idLocalidad} value={loc.idLocalidad}>
+                                            {loc.nombre}
+                                        </MenuItem>
+                                    ))}
+                                </TextField>
                             </Box>
 
                             {/* Descripción */}
@@ -456,7 +547,6 @@ export default function InmueblesPage() {
                                 </TextField>
                             </Box>
 
-                            {/* Nota sobre propietario */}
                             <Box sx={{ flex: '1 1 100%', p: 2, bgcolor: 'rgba(255,255,255,0.02)', borderRadius: 2, border: '1px dashed rgba(255,255,255,0.1)' }}>
                                 <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)' }}>
                                     Nota: La selección de propietario estará disponible cuando se implemente el módulo de propietarios.
@@ -490,7 +580,7 @@ export default function InmueblesPage() {
                 </DialogActions>
             </Dialog>
 
-            {/* Confirmation Dialog for Delete */}
+            {/* Dialog Eliminar */}
             <Dialog
                 open={deleteDialog.open}
                 onClose={() => !deleteLoading && setDeleteDialog({ open: false, id: null })}
@@ -523,7 +613,6 @@ export default function InmueblesPage() {
                 </DialogActions>
             </Dialog>
 
-            {/* Success Snackbar */}
             <Snackbar
                 open={snackbar.open}
                 autoHideDuration={4000}

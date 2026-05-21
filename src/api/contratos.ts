@@ -27,7 +27,12 @@ export const contratosApi = {
   },
 
   crear: async (contrato: CrearContratoRequest): Promise<string> => {
-    const response = await api.post<ApiResponse<{ contratoId: string }>>('/contrato', contrato);
+    const payload = {
+      ...contrato,
+      rolInquilinoId: contrato.rolInquilinoId || null,
+      idTipoIndice: contrato.idTipoIndice || null,
+    };
+    const response = await api.post<ApiResponse<{ contratoId: string }>>('/contrato', payload);
     if (response.data.success && response.data.data) {
       return response.data.data.contratoId;
     }

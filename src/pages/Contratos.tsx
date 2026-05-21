@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { 
-  Box, Typography, Container, TextField, 
-  Table, TableBody, TableCell, TableContainer, TableHead, 
+  Box, Typography, Container, TextField,
+  Table, TableBody, TableCell, TableContainer, TableHead,
   TableRow, CircularProgress, Alert, Button, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Snackbar,
   Select, MenuItem, IconButton, Tooltip
 } from '@mui/material';
@@ -67,6 +67,7 @@ export default function ContratosPage() {
   const [inquilinos, setInquilinos] = useState<Inquilino[]>([]);
   const [inmuebles, setInmuebles] = useState<Inmueble[]>([]);
   const [tipoIndices, setTipoIndices] = useState<any[]>([]);
+  const [loadingIndice, setLoadingIndice] = useState(false);
 
   // Success snackbar
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string }>({ open: false, message: '' });
@@ -204,6 +205,7 @@ export default function ContratosPage() {
       return;
     }
 
+    setLoadingIndice(true);
     try {
       // El backend resuelve el caché y la API externa automáticamente
       const res = await indicesApi.obtenerValorActual(val);
@@ -212,6 +214,8 @@ export default function ContratosPage() {
       }
     } catch (err) {
       console.error('Error al obtener el valor del índice:', err);
+    } finally {
+      setLoadingIndice(false);
     }
   };
 
@@ -466,28 +470,37 @@ export default function ContratosPage() {
               <Box sx={{ flex: '1 1 45%', minWidth: 200 }}>
                 <TextField
                   label="Cantidad de Cuotas"
-                  type="number"
                   fullWidth
-                  value={formData.cantidadCuotas}
-                  onChange={(e) => handleFormChange('cantidadCuotas', parseInt(e.target.value) || 0)}
+                  value={formData.cantidadCuotas || ''}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/\D/g, '');
+                    handleFormChange('cantidadCuotas', raw === '' ? 0 : parseInt(raw));
+                  }}
+                  slotProps={{ htmlInput: { inputMode: 'numeric' } }}
                 />
               </Box>
               <Box sx={{ flex: '1 1 45%', minWidth: 200 }}>
                 <TextField
                   label="Precio de Cuota"
-                  type="number"
                   fullWidth
-                  value={formData.precioCuota}
-                  onChange={(e) => handleFormChange('precioCuota', parseFloat(e.target.value) || 0)}
+                  value={formData.precioCuota || ''}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1');
+                    handleFormChange('precioCuota', raw === '' ? 0 : parseFloat(raw));
+                  }}
+                  slotProps={{ htmlInput: { inputMode: 'decimal' } }}
                 />
               </Box>
               <Box sx={{ flex: '1 1 45%', minWidth: 200 }}>
                 <TextField
                   label="Tasa Mora Mensual (%)"
-                  type="number"
                   fullWidth
-                  value={formData.tasaMoraMensual}
-                  onChange={(e) => handleFormChange('tasaMoraMensual', parseFloat(e.target.value) || 0)}
+                  value={formData.tasaMoraMensual || ''}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1');
+                    handleFormChange('tasaMoraMensual', raw === '' ? 0 : parseFloat(raw));
+                  }}
+                  slotProps={{ htmlInput: { inputMode: 'decimal' } }}
                 />
               </Box>
               <Box sx={{ flex: '1 1 45%', minWidth: 200 }}>
@@ -580,9 +593,16 @@ export default function ContratosPage() {
                       </IconButton>
                     </Tooltip>
                   </Box>
-                  <Typography variant="h6" sx={{ fontWeight: 800, color: '#4361ee', mt: 0.5 }}>
-                    {formData.valorIndiceInicio === null ? 'Pendiente' : formData.valorIndiceInicio.toLocaleString('es-AR')}
-                  </Typography>
+                  {loadingIndice ? (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                      <CircularProgress size={20} sx={{ color: '#4361ee' }} />
+                      <Typography variant="body2" sx={{ color: 'text.secondary' }}>Cargando...</Typography>
+                    </Box>
+                  ) : (
+                    <Typography variant="h6" sx={{ fontWeight: 800, color: '#4361ee', mt: 0.5 }}>
+                      {formData.valorIndiceInicio === null ? 'Pendiente' : formData.valorIndiceInicio.toLocaleString('es-AR')}
+                    </Typography>
+                  )}
                 </Box>
               </Box>
               <Box sx={{ flex: '1 1 100%', minWidth: 200 }}>
