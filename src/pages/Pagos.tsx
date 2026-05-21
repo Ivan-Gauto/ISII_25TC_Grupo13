@@ -499,12 +499,12 @@ export default function PagosPage() {
       </Box>
 
       {/* Barra de Métricas Sobria */}
-      <Box sx={{ 
-        display: 'flex', 
-        gap: 6, 
-        mb: 6, 
-        pb: 4, 
-        borderBottom: '1px solid rgba(255,255,255,0.05)' 
+      <Box sx={{
+        display: 'flex',
+        gap: 6,
+        mb: 6,
+        pb: 4,
+        borderBottom: '1px solid rgba(255,255,255,0.05)'
       }}>
         <Box>
           <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.3)', fontWeight: 700, letterSpacing: 1 }}>TOTAL</Typography>
@@ -768,6 +768,12 @@ export default function PagosPage() {
             </Alert>
           )}
 
+          {inquilinos.length === 0 ? (
+            <Alert severity="info" sx={{ mb: 3 }}>
+              No hay inquilinos con contratos activos.
+            </Alert>
+          ) : null}
+
           <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 3, mb: 3, mt: 1 }}>
             <Box>
               <Typography sx={{ mb: 1, fontWeight: 700, fontSize: '0.875rem' }}>Inquilino</Typography>
@@ -775,11 +781,9 @@ export default function PagosPage() {
                 fullWidth
                 size="small"
                 value={selectedInquilino}
+                disabled={inquilinos.length === 0}
                 onChange={(e) => {
                   const inquilinoId = e.target.value as string;
-
-                  console.log("Inquilino seleccionado:", inquilinoId);
-
                   handleChangeInquilino(inquilinoId);
                   setFormData((prev: RegistrarPagoRequest) => ({ ...prev, contratoId: '' }));
                 }}
@@ -975,9 +979,9 @@ export default function PagosPage() {
                     </Box>
                     <Typography variant="body2" sx={{ fontWeight: 700 }}>
                       {formData.idMetodoPago === '18EFAC4B-7ECE-45BE-869B-2EBBE7DFEB84' ? 'Transferencia' :
-                       formData.idMetodoPago === 'AAD9485D-0880-43D1-84BE-691121737A8E' ? 'Depósito' :
-                       formData.idMetodoPago === '0A4046B9-9368-4CF8-BC68-85658D8FA88F' ? 'Cheque' :
-                       formData.idMetodoPago === 'B7A7C600-82EC-496F-A671-8F6B765FD446' ? 'MercadoPago' : 'Efectivo'}
+                        formData.idMetodoPago === 'AAD9485D-0880-43D1-84BE-691121737A8E' ? 'Depósito' :
+                          formData.idMetodoPago === '0A4046B9-9368-4CF8-BC68-85658D8FA88F' ? 'Cheque' :
+                            formData.idMetodoPago === 'B7A7C600-82EC-496F-A671-8F6B765FD446' ? 'MercadoPago' : 'Efectivo'}
                     </Typography>
                   </Box>
 
