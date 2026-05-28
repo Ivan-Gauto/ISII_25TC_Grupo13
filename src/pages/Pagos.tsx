@@ -30,7 +30,7 @@ import { StatusChip } from '../components/common/StatusChip';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { ESTADOS_PAGO } from '../utils/constants';
 import { generatePaymentReceipt } from '../lib/pdf-generator';
-import type { Pago, CuotaParaPago, RegistrarPagoRequest } from '../types/pago';
+import type { Pago, CuotaPendiente, RegistrarPagoRequest, DetallePagoResponse } from '../types/pago';
 import type { Contrato } from '../types/contrato';
 import type { Inquilino } from '../types/inquilino';
 
@@ -46,15 +46,10 @@ interface Notificacion {
 }
 
 const initialFormData: RegistrarPagoRequest = {
-  contratoId: '',
-  cuotaId: '',
-  nroCuota: 0,
-  montoTotal: 0,
-  fechaPago: new Date().toISOString().split('T')[0],
-  metodoPagoId: '',
-  moraCobrada: 0,
-  otrosAdicionales: 0,
-  descAdicionales: ''
+  idCuota: '',
+  idMetodoPago: '',
+  monto: 0,
+  periodo: ''
 };
 
 export default function PagosPage() {
@@ -82,16 +77,17 @@ export default function PagosPage() {
   const [formData, setFormData] = useState<RegistrarPagoRequest>(initialFormData);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const [selectedInquilino, setSelectedInquilino] = useState<string>('');
-  const [otrosAdicionales, setOtrosAdicionales] = useState<number>(0);
+  const [selectedInquilinoId, setSelectedInquilinoId] = useState<string>('');
+  const [contratosInquilino, setContratosInquilino] = useState<Contrato[]>([]);
+  const [selectedContratoId, setSelectedContratoId] = useState('');
+  const [cuotaPendiente, setCuotaPendiente] = useState<CuotaPendiente | null>(null);
+  const [detallePago, setDetallePago] = useState<DetallePagoResponse | null>(null);
 
   // Success snackbar
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity?: 'success' | 'error' | 'warning' | 'info' }>({ open: false, message: '' });
 
   const [contratos, setContratos] = useState<Contrato[]>([]);
   const [inquilinos, setInquilinos] = useState<Inquilino[]>([]);
-  const [, setCuotasContrato] = useState<CuotaParaPago[]>([]);
-  const [cuotaActiva, setCuotaActiva] = useState<CuotaParaPago | null>(null);
 
   // NEW: Sistema de notificaciones
   const [notificaciones, setNotificaciones] = useState<Notificacion[]>([]);
@@ -157,15 +153,13 @@ export default function PagosPage() {
   const openRegistrarDialog = async () => {
     try {
       setLoading(true);
-      const [dataInquilinos, dataContratos] = await Promise.all([
-        inquilinosApi.listarConContratos(),
-        contratosApi.listar()
-      ]);
+      const dataInquilinos = await inquilinosApi.listarConContratos();
       setInquilinos(dataInquilinos);
-      setContratos(dataContratos);
-      setCuotasContrato([]);
-      setCuotaActiva(null);
-      setSelectedInquilino('');
+      setContratosInquilino([]);
+      setCuotaPendiente(null);
+      setDetallePago(null);
+      setSelectedInquilinoId('');
+      setSelectedContratoId('');
       setFormData(initialFormData);
       setRegistrarDialog(true);
     } catch (err) {
@@ -273,38 +267,26 @@ export default function PagosPage() {
   const handleRegistrarPago = async () => {
     setFormError(null);
 
-    if (!formData.contratoId) {
+    if (!selectedContratoId) {
       setFormError('Debe seleccionar un contrato');
       return;
     }
-    if (!formData.cuotaId) {
-      setFormError('Debe seleccionar una cuota');
+    if (!formData.idCuota) {
+      setFormError('No se ha cargado una cuota pendiente');
       return;
     }
-    if (totalPagar <= 0) {
+    if (!formData.idMetodoPago) {
+      setFormError('Debe seleccionar un metodo de pago');
+      return;
+    }
+    if (formData.monto <= 0) {
       setFormError('El monto debe ser mayor a 0');
       return;
     }
-    if (!formData.fechaPago) {
-      setFormError('La fecha de pago es obligatoria');
-      return;
-    }
-
-    const pagoFinal: RegistrarPagoRequest = {
-      contratoId: formData.contratoId,
-      cuotaId: formData.cuotaId,
-      nroCuota: formData.nroCuota,
-      montoTotal: totalPagar,
-      fechaPago: formData.fechaPago,
-      metodoPagoId: formData.metodoPagoId,
-      moraCobrada: moraCalculada,
-      otrosAdicionales: otrosAdicionales || 0,
-      descAdicionales: ''
-    };
 
     try {
       setRegistrarLoading(true);
-      await pagosApi.registrar(pagoFinal);
+      await pagosApi.registrar(formData);
       setRegistrarDialog(false);
       setFormData(initialFormData);
       fetchPagos();
@@ -343,18 +325,21 @@ export default function PagosPage() {
     return result;
   }, [pagos, tabValue, searchTerm]);
 
-  // Selected contrato logic
-  const contratoActivo = useMemo(() => contratos.find(c => c.id === formData.contratoId), [contratos, formData.contratoId]);
-  const importeBase = cuotaActiva ? cuotaActiva.importeBase : (contratoActivo ? contratoActivo.precioCuota : 0);
-  const moraCalculada = cuotaActiva ? cuotaActiva.moraCalculada : 0;
-  const totalPagar = importeBase + moraCalculada + (Number(otrosAdicionales) || 0);
+  const contratoActivo = useMemo(() => contratosInquilino.find(c => c.id === selectedContratoId), [contratosInquilino, selectedContratoId]);
+  const importeBase = cuotaPendiente?.precioCuota ?? detallePago?.cuota.precioCuota ?? 0;
+  const moraCalculada = cuotaPendiente?.moraCalculada ?? detallePago?.cuota.moraCalculada ?? 0;
+  const totalFinal = cuotaPendiente?.totalFinal ?? detallePago?.cuota.totalFinal ?? 0;
+  const periodoCuota = cuotaPendiente?.periodo ?? detallePago?.cuota.periodo ?? '';
+  const fechaVencimiento = cuotaPendiente?.fechaVencimiento ?? detallePago?.cuota.fechaVencimiento ?? '';
 
   const resetDialogForm = () => {
     setRegistrarDialog(false);
     setFormData(initialFormData);
-    setSelectedInquilino('');
-    setOtrosAdicionales(0);
-    setCuotaActiva(null);
+    setSelectedInquilinoId('');
+    setSelectedContratoId('');
+    setContratosInquilino([]);
+    setCuotaPendiente(null);
+    setDetallePago(null);
     setFormError(null);
   };
 
@@ -729,15 +714,31 @@ export default function PagosPage() {
               <Select
                 fullWidth
                 size="small"
-                value={selectedInquilino}
-                onChange={(e) => {
-                  const dni = e.target.value as string;
-                  setSelectedInquilino(dni);
-                  setFormData((prev: RegistrarPagoRequest) => ({ ...prev, contratoId: '' }));
+                value={selectedInquilinoId}
+                onChange={async (e) => {
+                  const id = e.target.value as string;
+                  setSelectedInquilinoId(id);
+                  setSelectedContratoId('');
+                  setCuotaPendiente(null);
+                  setDetallePago(null);
+                  setFormData(prev => ({ ...prev, idCuota: '', idMetodoPago: '', monto: 0, periodo: '' }));
+
+                  if (!id) {
+                    setContratosInquilino([]);
+                    return;
+                  }
+
+                  try {
+                    const data = await contratosApi.listarActivosPorInquilino(id);
+                    setContratosInquilino(data);
+                  } catch (err) {
+                    console.error('Error al cargar contratos:', err);
+                    setContratosInquilino([]);
+                  }
                 }}
               >
                 {inquilinos.map(inq => (
-                  <MenuItem key={inq.dni} value={inq.dni}>
+                  <MenuItem key={inq.id} value={inq.id}>
                     {inq.nombreCompleto}
                   </MenuItem>
                 ))}
@@ -748,74 +749,81 @@ export default function PagosPage() {
               <Select
                 fullWidth
                 size="small"
-                disabled={!selectedInquilino}
-                value={formData.contratoId || ''}
+                disabled={!selectedInquilinoId}
+                value={selectedContratoId}
                 onChange={async (e) => {
                   const cId = e.target.value as string;
+                  setSelectedContratoId(cId);
 
                   if (!cId) {
-                    setCuotasContrato([]);
-                    setCuotaActiva(null);
-                    setFormData(prev => ({ ...prev, contratoId: '', cuotaId: '', nroCuota: 0 }));
+                    setCuotaPendiente(null);
+                    setDetallePago(null);
+                    setFormData(prev => ({ ...prev, idCuota: '', idMetodoPago: '', monto: 0, periodo: '' }));
                     return;
                   }
 
                   try {
-                    const cuotasData = await pagosApi.obtenerCuotasPorContrato(cId);
-                    setCuotasContrato(cuotasData);
-
-                    const cuotaPendiente = cuotasData.find(c => c.estadoTexto !== 'Pagada');
-                    if (cuotaPendiente) {
-                      setCuotaActiva(cuotaPendiente);
-                      setFormData(prev => ({
-                        ...prev,
-                        contratoId: cId,
-                        cuotaId: cuotaPendiente.cuotaId,
-                        nroCuota: cuotaPendiente.nroCuota
-                      }));
-                    } else {
-                      setCuotaActiva(null);
-                      setFormData(prev => ({ ...prev, contratoId: cId, cuotaId: '', nroCuota: 0 }));
-                    }
+                    const [pendiente, calculado] = await Promise.all([
+                      pagosApi.obtenerCuotaPendiente(cId),
+                      pagosApi.calcular(cId)
+                    ]);
+                    setCuotaPendiente(pendiente);
+                    setDetallePago(calculado);
+                    setFormData(prev => ({
+                      ...prev,
+                      idCuota: pendiente.idCuota,
+                      monto: pendiente.totalFinal,
+                      periodo: pendiente.periodo
+                    }));
                   } catch (err) {
-                    console.error('Error al cargar cuotas:', err);
-                    setCuotasContrato([]);
-                    setCuotaActiva(null);
+                    console.error('Error al cargar datos de la cuota:', err);
+                    setCuotaPendiente(null);
+                    setDetallePago(null);
                   }
                 }}
               >
-                {!selectedInquilino ? (
+                {!selectedInquilinoId ? (
                   <MenuItem value="" disabled>Seleccione un inquilino primero</MenuItem>
-                ) : contratos
-                  .filter(c => c.dniInquilino === selectedInquilino)
-                  .length === 0 ? (
-                  <MenuItem value="" disabled>Sin contratos para este inquilino</MenuItem>
+                ) : contratosInquilino.length === 0 ? (
+                  <MenuItem value="" disabled>Sin contratos activos para este inquilino</MenuItem>
                 ) : (
-                  contratos
-                    .filter(c => c.dniInquilino === selectedInquilino)
-                    .map(c => (
-                      <MenuItem key={c.id} value={c.id}>
-                        {c.direccion || c.inmueble}
-                      </MenuItem>
-                    ))
+                  contratosInquilino.map(c => (
+                    <MenuItem key={c.id} value={c.id}>
+                      {c.direccion || c.inmueble}
+                    </MenuItem>
+                  ))
                 )}
               </Select>
             </Box>
           </Box>
 
-          <Box sx={{ mb: 4 }}>
-            <Typography sx={{ mb: 1, fontWeight: 700, fontSize: '0.875rem' }}>Otros adicionales</Typography>
-            <TextField
-              size="small"
-              fullWidth
-              type="number"
-              value={otrosAdicionales || ''}
-              onChange={(e) => setOtrosAdicionales(parseFloat(e.target.value) || 0)}
-            />
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 3, mb: 3 }}>
+            <Box>
+              <Typography sx={{ mb: 1, fontWeight: 700, fontSize: '0.875rem' }}>Metodo de pago</Typography>
+              <Select
+                fullWidth
+                size="small"
+                disabled={!detallePago}
+                value={formData.idMetodoPago}
+                onChange={(e) => setFormData(prev => ({ ...prev, idMetodoPago: e.target.value }))}
+              >
+                {!detallePago ? (
+                  <MenuItem value="" disabled>Seleccione un contrato primero</MenuItem>
+                ) : detallePago.metodosPago.length === 0 ? (
+                  <MenuItem value="" disabled>Sin metodos de pago disponibles</MenuItem>
+                ) : (
+                  detallePago.metodosPago.map(mp => (
+                    <MenuItem key={mp.id} value={mp.id}>
+                      {mp.nombre}
+                    </MenuItem>
+                  ))
+                )}
+              </Select>
+            </Box>
           </Box>
 
           <Box>
-            <Typography variant="h6" sx={{ fontWeight: 800, mb: 1 }}>Datos del pago</Typography>
+            <Typography variant="h6" sx={{ fontWeight: 800, mb: 1 }}>Detalle de la cuota</Typography>
             <Typography sx={{ color: 'error.main', fontWeight: 800, fontSize: '0.875rem', mb: 3 }}>
               ATENCION! verificar los datos antes de registrar el pago, en caso contrario debera anular y rehacer el mismo
             </Typography>
@@ -829,8 +837,8 @@ export default function PagosPage() {
                 </Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <HomeWorkIcon fontSize="small" color="action" />
-                  <Typography variant="body2" color="text.secondary">Propietario</Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 700 }}>-</Typography>
+                  <Typography variant="body2" color="text.secondary">Inmueble</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 700 }}>{contratoActivo?.direccion || contratoActivo?.inmueble || '-'}</Typography>
                 </Box>
               </Box>
 
@@ -838,18 +846,15 @@ export default function PagosPage() {
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 200 }}>
                   <EditIcon fontSize="small" color="action" />
                   <Typography variant="body2" color="text.secondary">Nro. de cuota</Typography>
-                  <TextField
-                    variant="standard"
-                    value={formData.nroCuota}
-                    slotProps={{ input: { readOnly: true, disableUnderline: true } }}
-                    sx={{ width: 40, '& input': { p: 0, fontWeight: 700, fontSize: '0.875rem' } }}
-                  />
+                  <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                    {cuotaPendiente?.nroCuota ?? detallePago?.cuota.nroCuota ?? '-'}
+                  </Typography>
                 </Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <CalendarIcon fontSize="small" color="action" />
                   <Typography variant="body2" color="text.secondary">Vencimiento</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                    {cuotaActiva?.fechaVencimiento ? new Date(cuotaActiva.fechaVencimiento).toLocaleDateString('es-AR') : '-'}
+                    {fechaVencimiento ? new Date(fechaVencimiento).toLocaleDateString('es-AR') : '-'}
                   </Typography>
                 </Box>
               </Box>
@@ -857,13 +862,13 @@ export default function PagosPage() {
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 200 }}>
                   <CalendarIcon fontSize="small" color="action" />
-                  <Typography variant="body2" color="text.secondary">Periodo de cuota</Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 700 }}>{cuotaActiva?.periodo || '-'}</Typography>
+                  <Typography variant="body2" color="text.secondary">Periodo</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 700 }}>{periodoCuota || '-'}</Typography>
                 </Box>
                 <Chip
-                  label={cuotaActiva?.estado === 1 ? 'Vencida' : cuotaActiva?.estado === 2 ? 'Pagada' : 'Pendiente'}
+                  label={cuotaPendiente?.estado === 'Vencida' ? 'Vencida' : cuotaPendiente?.estado === 'Pagada' ? 'Pagada' : 'Pendiente'}
                   sx={{
-                    bgcolor: cuotaActiva?.estado === 1 ? '#ff4d4f' : cuotaActiva?.estado === 2 ? '#10B981' : '#FFFF00',
+                    bgcolor: cuotaPendiente?.estado === 'Vencida' ? '#ff4d4f' : cuotaPendiente?.estado === 'Pagada' ? '#10B981' : '#FFFF00',
                     color: '#000',
                     fontWeight: 800,
                     borderRadius: 1
@@ -872,9 +877,25 @@ export default function PagosPage() {
                 />
               </Box>
 
+              {detallePago?.cuota.valorIndiceAplicado ? (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+                  <MoneyIcon fontSize="small" color="action" />
+                  <Typography variant="body2" color="text.secondary" sx={{ minWidth: 150 }}>Valor indice aplicado</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 800 }}>{detallePago.cuota.valorIndiceAplicado.toLocaleString('es-AR')}</Typography>
+                </Box>
+              ) : null}
+
+              {detallePago?.cuota.importeActualizado ? (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <MoneyIcon fontSize="small" color="action" />
+                  <Typography variant="body2" color="text.secondary" sx={{ minWidth: 150 }}>Importe actualizado</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 800 }}>$ {detallePago.cuota.importeActualizado.toLocaleString('es-AR')}</Typography>
+                </Box>
+              ) : null}
+
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
                 <MoneyIcon fontSize="small" color="action" />
-                <Typography variant="body2" color="text.secondary" sx={{ minWidth: 150 }}>Importe base</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ minWidth: 150 }}>Precio cuota base</Typography>
                 <Typography variant="body2" sx={{ fontWeight: 800 }}>$ {importeBase.toLocaleString('es-AR')}</Typography>
               </Box>
 
@@ -884,16 +905,10 @@ export default function PagosPage() {
                 <Typography variant="body2" sx={{ fontWeight: 800 }}>$ {moraCalculada.toLocaleString('es-AR')}</Typography>
               </Box>
 
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <MoneyIcon fontSize="small" color="action" />
-                <Typography variant="body2" color="text.secondary" sx={{ minWidth: 150 }}>Otros adicionales</Typography>
-                <Typography variant="body2" sx={{ fontWeight: 800 }}>$ {(otrosAdicionales || 0).toLocaleString('es-AR')}</Typography>
-              </Box>
-
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
                 <MoneyIcon fontSize="small" color="action" />
                 <Typography variant="body2" sx={{ minWidth: 150, color: 'text.secondary' }}>Total a pagar</Typography>
-                <Typography variant="body2" sx={{ fontWeight: 800 }}>$ {totalPagar.toLocaleString('es-AR')}</Typography>
+                <Typography variant="body2" sx={{ fontWeight: 800 }}>$ {totalFinal.toLocaleString('es-AR')}</Typography>
               </Box>
             </Box>
           </Box>

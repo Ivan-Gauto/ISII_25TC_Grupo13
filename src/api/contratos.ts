@@ -11,6 +11,16 @@ export const contratosApi = {
     throw new Error(response.data.mensaje || 'Error al obtener contratos');
   },
 
+  listarActivosPorInquilino: async (idInquilino: string): Promise<Contrato[]> => {
+    const response = await api.get<ApiResponse<Contrato[]>>(`/contrato/activos-por-inquilino`, {
+      params: { idInquilino }
+    });
+    if (response.data.success && response.data.data) {
+      return response.data.data;
+    }
+    throw new Error(response.data.mensaje || 'Error al obtener contratos del inquilino');
+  },
+
   obtenerPorId: async (id: string): Promise<Contrato> => {
     const response = await api.get<ApiResponse<Contrato>>(`/contrato/${id}`);
     if (response.data.success && response.data.data) {
@@ -28,7 +38,7 @@ export const contratosApi = {
   },
 
   rescindir: async (id: string): Promise<void> => {
-    const response = await api.put<ApiResponse<void>>(`/contrato/${id}/anular`);
+    const response = await api.put<ApiResponse<void>>(`/contrato/rescindir/${id}`);
     if (!response.data.success) {
       throw new Error(response.data.mensaje || 'Error al rescindir contrato');
     }

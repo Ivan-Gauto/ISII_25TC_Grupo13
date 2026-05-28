@@ -1,5 +1,5 @@
 import api, { type ApiResponse } from './index';
-import type { Pago, CuotaParaPago, RegistrarPagoRequest } from '../types/pago';
+import type { Pago, CuotaPendiente, RegistrarPagoRequest, DetallePagoResponse } from '../types/pago';
 
 export const pagosApi = {
   listar: async (estado?: number): Promise<Pago[]> => {
@@ -11,24 +11,24 @@ export const pagosApi = {
     throw new Error(response.data.mensaje || 'Error al obtener los pagos');
   },
 
-  obtenerCuota: async (cuotaId: number): Promise<CuotaParaPago> => {
-    const response = await api.get<ApiResponse<CuotaParaPago>>(`/Pago/${cuotaId}`);
+  obtenerCuotaPendiente: async (contratoId: string): Promise<CuotaPendiente> => {
+    const response = await api.get<ApiResponse<CuotaPendiente>>(`/cuota/por-contrato/${contratoId}`);
     if (response.data.success && response.data.data) {
       return response.data.data;
     }
-    throw new Error(response.data.mensaje || 'Error al obtener la cuota');
+    throw new Error(response.data.mensaje || 'Error al obtener la cuota pendiente');
   },
 
-  obtenerCuotasPorContrato: async (contratoId: string): Promise<CuotaParaPago[]> => {
-    const response = await api.get<ApiResponse<CuotaParaPago[]>>(`/Pago/contrato/${contratoId}`);
+  calcular: async (idContrato: string): Promise<DetallePagoResponse> => {
+    const response = await api.get<ApiResponse<DetallePagoResponse>>(`/Pago/calcular/${idContrato}`);
     if (response.data.success && response.data.data) {
       return response.data.data;
     }
-    throw new Error(response.data.mensaje || 'Error al obtener las cuotas');
+    throw new Error(response.data.mensaje || 'Error al calcular detalle del pago');
   },
 
-  registrar: async (pagoData: RegistrarPagoRequest): Promise<{ pagoId: number }> => {
-    const response = await api.post<ApiResponse<{ pagoId: number }>>('/Pago', pagoData);
+  registrar: async (pagoData: RegistrarPagoRequest): Promise<{ pagoId: string }> => {
+    const response = await api.post<ApiResponse<{ pagoId: string }>>('/Pago', pagoData);
     if (response.data.success && response.data.data) {
       return response.data.data;
     }
@@ -42,14 +42,12 @@ export const pagosApi = {
     }
   },
 
-
   rechazar: async (pagoId: number): Promise<void> => {
     const response = await api.patch<ApiResponse<void>>(`/Pago/${pagoId}/rechazar`);
     if (!response.data.success) {
       throw new Error(response.data.mensaje || 'Error al rechazar el pago');
     }
   },
-
 
   rechazarConMotivo: async (pagoId: number, motivo: string): Promise<void> => {
     const response = await api.patch<ApiResponse<void>>(`/Pago/${pagoId}/rechazar`, { motivo });

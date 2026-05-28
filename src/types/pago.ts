@@ -16,40 +16,50 @@ export interface Pago {
   estadoTexto: string;
 }
 
-export interface CuotaParaPago {
-  cuotaId: string;
+export interface CuotaPendiente {
+  idCuota: string;
   nroCuota: number;
   periodo: string;
+  precioCuota: number;
   fechaVencimiento: string;
-  importeBase: number;
-  tasaMoraMensual: number;
+  valorIndiceAplicado: number;
+  importeActualizado: number;
   diasAtraso: number;
   moraCalculada: number;
-  totalAPagar: number;
-  estado: number;
-  estadoTexto: string;
+  totalFinal: number;
+  estado: string;
 }
 
 export interface RegistrarPagoRequest {
-  contratoId: string;
-  cuotaId: string;
-  nroCuota: number;
-  montoTotal: number;
-  fechaPago: string;
-  metodoPagoId: string;
-  moraCobrada: number;
-  otrosAdicionales: number;
-  descAdicionales: string;
+  idCuota: string;
+  idMetodoPago: string;
+  monto: number;
+  periodo: string;
 }
 
-export interface RegistrarPagoInternal {
-  contratoId: number;
-  cuotaId: number;
+export interface CuotaCalculada {
+  idCuota: string;
   nroCuota: number;
-  montoTotal: number;
-  fechaPago: string;
-  metodoPagoId: number;
-  moraCobrada: number;
-  otrosAdicionales: number;
-  descAdicionales: string;
+  periodo: string;
+  fechaVencimiento: string;
+  precioCuota: number;
+  valorIndiceAplicado: number;
+  importeActualizado: number;
+  totalAdicionales: number;
+  totalDescuentos: number;
+  diasAtraso: number;
+  moraCalculada: number;
+  totalFinal: number;
+  estado: string;
+}
+
+export interface MetodoPago {
+  id: string;
+  nombre: string;
+  descripcion?: string;
+}
+
+export interface DetallePagoResponse {
+  cuota: CuotaCalculada;
+  metodosPago: MetodoPago[];
 }
