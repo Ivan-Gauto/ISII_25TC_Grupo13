@@ -56,8 +56,8 @@ export const pagosApi = {
     }
   },
 
-  anular: async (pagoId: number): Promise<void> => {
-    const response = await api.patch<ApiResponse<void>>(`/Pago/${pagoId}/anular`);
+  anular: async (pagoId: number, motivo: string): Promise<void> => {
+    const response = await api.patch<ApiResponse<void>>(`/Pago/${pagoId}/anular`, { motivo });
     if (!response.data.success) {
       throw new Error(response.data.mensaje || 'Error al anular el pago');
     }

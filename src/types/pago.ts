@@ -12,7 +12,7 @@ export interface Pago {
   mora: number;
   diasAtraso: number;
   totalPagado: number;
-  estado: number;
+  estado: 'Pendiente' | 'Aprobado' | 'Rechazado' | 'Anulado';
   estadoTexto: string;
 }
 

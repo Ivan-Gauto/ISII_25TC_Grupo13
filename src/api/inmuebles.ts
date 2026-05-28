@@ -3,7 +3,7 @@ import type { Inmueble } from '../types/inmueble';
 
 
 export const inmueblesApi = {
-  listar: async (): Promise<Inmueble[]> => {
+  listarInmuebles: async (): Promise<Inmueble[]> => {
     const response = await api.get<ApiResponse<Inmueble[]>>('/inmueble');
     return response.data.data || [];
   },

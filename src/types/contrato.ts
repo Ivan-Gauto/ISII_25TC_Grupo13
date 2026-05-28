@@ -1,12 +1,13 @@
 export interface Contrato {
   id: string;
+  idPersonaInquilino: string;
   inquilino: string;
   dniInquilino: string;
   direccion: string;
   inmueble: string;
   precioCuota: number;
   cantCuotas: number;
-  fechaInicio: string;
+  fechaCreacion: string;
   fechaFin: string;
   moraMensual: number;
   moraDiaria: number;
@@ -15,7 +16,7 @@ export interface Contrato {
 }
 
 export interface CrearContratoRequest {
-  fechaInicio: string;
+  fechaCreacion: string;
   fechaFin: string;
   cantidadCuotas: number;
   precioCuota: number;

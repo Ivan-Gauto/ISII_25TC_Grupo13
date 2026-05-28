@@ -1,3 +1,5 @@
+import type { Direccion } from './direccion';
+
 export interface Inmueble {
   id?: string;
   idDireccion: string;
@@ -9,5 +11,10 @@ export interface Inmueble {
   disponibilidad: boolean;
   idTipoInmueble: string;
   direccion?: string;
+  localidad?: string;
+  provincia?: string;
+  idLocalidad?: string;
+  idProvincia?: string;
   propietarioNombreCompleto?: string;
+  oDireccion?: Direccion;
 }

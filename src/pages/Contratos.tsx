@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { 
-  Box, Typography, Container, TextField, 
-  Table, TableBody, TableCell, TableContainer, TableHead, 
+  Box, Typography, Container, TextField,
+  Table, TableBody, TableCell, TableContainer, TableHead,
   TableRow, CircularProgress, Alert, Button, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Snackbar,
   Select, MenuItem, IconButton, Tooltip
 } from '@mui/material';
@@ -28,7 +28,7 @@ import { formatCurrency, formatDate, toInputDate, isPorVencer } from '../utils/f
 
 
 const initialFormData: CrearContratoRequest = {
-  fechaInicio: toInputDate(),
+  fechaCreacion: toInputDate(),
   fechaFin: toInputDate(new Date(new Date().setMonth(new Date().getMonth() + 12))),
   cantidadCuotas: 12,
   precioCuota: 0,
@@ -67,6 +67,7 @@ export default function ContratosPage() {
   const [inquilinos, setInquilinos] = useState<Inquilino[]>([]);
   const [inmuebles, setInmuebles] = useState<Inmueble[]>([]);
   const [tipoIndices, setTipoIndices] = useState<any[]>([]);
+  const [loadingIndice, setLoadingIndice] = useState(false);
 
   // Success snackbar
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string }>({ open: false, message: '' });
@@ -86,7 +87,7 @@ export default function ContratosPage() {
 
   const fetchInquilinos = async () => {
     try {
-      const data = await inquilinosApi.listar();
+      const data = await inquilinosApi.ListarInquilinos();
       setInquilinos(data);
     } catch (err) {
       console.error('Error al cargar inquilinos:', err);
@@ -144,7 +145,7 @@ export default function ContratosPage() {
     setFormError(null);
     
     // Validaciones básicas
-    if (!formData.fechaInicio) {
+    if (!formData.fechaCreacion) {
       setFormError('La fecha de inicio es obligatoria');
       return;
     }
@@ -183,9 +184,9 @@ export default function ContratosPage() {
     setFormData(prev => {
       const newData = { ...prev, [field]: value };
       
-      // Auto-calculate fechaFin if fechaInicio or cantidadCuotas change
-      if ((field === 'fechaInicio' || field === 'cantidadCuotas') && newData.fechaInicio && newData.cantidadCuotas > 0) {
-        const start = new Date(newData.fechaInicio);
+      // Auto-calculate fechaFin if fechaCreacion or cantidadCuotas change
+      if ((field === 'fechaCreacion' || field === 'cantidadCuotas') && newData.fechaCreacion && newData.cantidadCuotas > 0) {
+        const start = new Date(newData.fechaCreacion);
         if (!isNaN(start.getTime())) {
           start.setMonth(start.getMonth() + Number(newData.cantidadCuotas));
           newData.fechaFin = toInputDate(start);
@@ -204,6 +205,7 @@ export default function ContratosPage() {
       return;
     }
 
+    setLoadingIndice(true);
     try {
       // El backend resuelve el caché y la API externa automáticamente
       const res = await indicesApi.obtenerValorActual(val);
@@ -212,6 +214,8 @@ export default function ContratosPage() {
       }
     } catch (err) {
       console.error('Error al obtener el valor del índice:', err);
+    } finally {
+      setLoadingIndice(false);
     }
   };
 
@@ -365,7 +369,7 @@ export default function ContratosPage() {
                         <TableCell sx={{ color: '#fff', fontWeight: 500, py: 3, pl: 4 }}>{contrato.direccion || contrato.inmueble}</TableCell>
                         <TableCell sx={{ color: 'rgba(255,255,255,0.8)' }}>{contrato.inquilino}</TableCell>
                         <TableCell sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem' }}>
-                          {formatDate(contrato.fechaInicio)} — {formatDate(contrato.fechaFin)}
+                          {formatDate(contrato.fechaCreacion)} — {formatDate(contrato.fechaFin)}
                         </TableCell>
                         <TableCell sx={{ color: '#fff', fontWeight: 700 }}>{formatCurrency(contrato.precioCuota)}</TableCell>
                         <TableCell>
@@ -457,8 +461,8 @@ export default function ContratosPage() {
                   label="Fecha de Inicio"
                   type="date"
                   fullWidth
-                  value={formData.fechaInicio}
-                  onChange={(e) => handleFormChange('fechaInicio', e.target.value)}
+                  value={formData.fechaCreacion}
+                  onChange={(e) => handleFormChange('fechaCreacion', e.target.value)}
                   slotProps={{ inputLabel: { shrink: true } }}
                 />
               </Box>
@@ -466,28 +470,37 @@ export default function ContratosPage() {
               <Box sx={{ flex: '1 1 45%', minWidth: 200 }}>
                 <TextField
                   label="Cantidad de Cuotas"
-                  type="number"
                   fullWidth
-                  value={formData.cantidadCuotas}
-                  onChange={(e) => handleFormChange('cantidadCuotas', parseInt(e.target.value) || 0)}
+                  value={formData.cantidadCuotas || ''}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/\D/g, '');
+                    handleFormChange('cantidadCuotas', raw === '' ? 0 : parseInt(raw));
+                  }}
+                  slotProps={{ htmlInput: { inputMode: 'numeric' } }}
                 />
               </Box>
               <Box sx={{ flex: '1 1 45%', minWidth: 200 }}>
                 <TextField
                   label="Precio de Cuota"
-                  type="number"
                   fullWidth
-                  value={formData.precioCuota}
-                  onChange={(e) => handleFormChange('precioCuota', parseFloat(e.target.value) || 0)}
+                  value={formData.precioCuota || ''}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1');
+                    handleFormChange('precioCuota', raw === '' ? 0 : parseFloat(raw));
+                  }}
+                  slotProps={{ htmlInput: { inputMode: 'decimal' } }}
                 />
               </Box>
               <Box sx={{ flex: '1 1 45%', minWidth: 200 }}>
                 <TextField
                   label="Tasa Mora Mensual (%)"
-                  type="number"
                   fullWidth
-                  value={formData.tasaMoraMensual}
-                  onChange={(e) => handleFormChange('tasaMoraMensual', parseFloat(e.target.value) || 0)}
+                  value={formData.tasaMoraMensual || ''}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1');
+                    handleFormChange('tasaMoraMensual', raw === '' ? 0 : parseFloat(raw));
+                  }}
+                  slotProps={{ htmlInput: { inputMode: 'decimal' } }}
                 />
               </Box>
               <Box sx={{ flex: '1 1 45%', minWidth: 200 }}>
@@ -580,9 +593,16 @@ export default function ContratosPage() {
                       </IconButton>
                     </Tooltip>
                   </Box>
-                  <Typography variant="h6" sx={{ fontWeight: 800, color: '#4361ee', mt: 0.5 }}>
-                    {formData.valorIndiceInicio === null ? 'Pendiente' : formData.valorIndiceInicio.toLocaleString('es-AR')}
-                  </Typography>
+                  {loadingIndice ? (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                      <CircularProgress size={20} sx={{ color: '#4361ee' }} />
+                      <Typography variant="body2" sx={{ color: 'text.secondary' }}>Cargando...</Typography>
+                    </Box>
+                  ) : (
+                    <Typography variant="h6" sx={{ fontWeight: 800, color: '#4361ee', mt: 0.5 }}>
+                      {formData.valorIndiceInicio === null ? 'Pendiente' : formData.valorIndiceInicio.toLocaleString('es-AR')}
+                    </Typography>
+                  )}
                 </Box>
               </Box>
               <Box sx={{ flex: '1 1 100%', minWidth: 200 }}>
