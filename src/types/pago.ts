@@ -1,7 +1,7 @@
 export interface Pago {
-  id: number;
-  contratoId: number;
-  cuotaId: number;
+  id: string;
+  contratoId: string;
+  cuotaId: string;
   inquilino: string;
   inmueble: string;
   nroCuota: number;
@@ -12,8 +12,22 @@ export interface Pago {
   mora: number;
   diasAtraso: number;
   totalPagado: number;
-  estado: 'Pendiente' | 'Aprobado' | 'Rechazado' | 'Anulado';
+  estado: 'Activo' | 'Anulado';
   estadoTexto: string;
+}
+
+export interface TipoAdicional {
+  id: string;
+  descripcion: string;
+  montoBase: number;
+}
+
+export interface CuotaAdicionalItem {
+  idCuotaAdicional?: string;
+  idCuota: string;
+  idTipoAdicionales: string;
+  montoAplicado: number;
+  descripcionManual?: string;
 }
 
 export interface CuotaPendiente {

@@ -2,7 +2,7 @@ import { jsPDF } from 'jspdf';
 
 // Interfaz para los datos del pago que se usaran en el PDF
 interface DatosPagoRecibo {
-    id: number;
+    id: string;
     inquilino: string;
     inquilinoDni: string;
     inmueble: string;

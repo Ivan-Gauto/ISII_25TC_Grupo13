@@ -35,29 +35,29 @@ export const pagosApi = {
     throw new Error(response.data.mensaje || 'Error al registrar el pago');
   },
 
-  confirmar: async (pagoId: number): Promise<void> => {
+  confirmar: async (pagoId: string): Promise<void> => {
     const response = await api.patch<ApiResponse<void>>(`/Pago/${pagoId}/confirmar`);
     if (!response.data.success) {
       throw new Error(response.data.mensaje || 'Error al confirmar el pago');
     }
   },
 
-  rechazar: async (pagoId: number): Promise<void> => {
+  rechazar: async (pagoId: string): Promise<void> => {
     const response = await api.patch<ApiResponse<void>>(`/Pago/${pagoId}/rechazar`);
     if (!response.data.success) {
       throw new Error(response.data.mensaje || 'Error al rechazar el pago');
     }
   },
 
-  rechazarConMotivo: async (pagoId: number, motivo: string): Promise<void> => {
+  rechazarConMotivo: async (pagoId: string, motivo: string): Promise<void> => {
     const response = await api.patch<ApiResponse<void>>(`/Pago/${pagoId}/rechazar`, { motivo });
     if (!response.data.success) {
       throw new Error(response.data.mensaje || 'Error al rechazar el pago');
     }
   },
 
-  anular: async (pagoId: number, motivo: string): Promise<void> => {
-    const response = await api.patch<ApiResponse<void>>(`/Pago/${pagoId}/anular`, { motivo });
+  anular: async (pagoId: string, motivo: string): Promise<void> => {
+    const response = await api.post<ApiResponse<void>>(`/Pago/${pagoId}/anular`, { motivo });
     if (!response.data.success) {
       throw new Error(response.data.mensaje || 'Error al anular el pago');
     }

@@ -3,7 +3,7 @@ import {
   Box, Typography, Container, Card, CardContent, TextField,
   Table, TableBody, TableCell, TableContainer, TableHead,
   TableRow, Chip, IconButton, Tooltip, CircularProgress, Alert, Button, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Snackbar,
-  MenuItem, Select, Badge, Menu
+  MenuItem, Select, Badge
 } from '@mui/material';
 import {
   ReceiptOutlined as ReceiptIcon,
@@ -15,23 +15,20 @@ import {
   EditOutlined as EditIcon,
   CalendarTodayOutlined as CalendarIcon,
   AttachMoneyOutlined as MoneyIcon,
-  CheckCircleOutlined as ApproveIcon,
-  RemoveCircleOutlined as RejectIcon,
   NotificationsOutlined as NotificationsIcon,
   DeleteOutlined as DeleteIcon,
-  ArrowDropDown as ArrowDropDownIcon
 } from '@mui/icons-material';
 import { pagosApi } from '../api/pagos';
 import { contratosApi } from '../api/contratos';
 import { inquilinosApi } from '../api/inquilinos';
+import { adicionalesApi } from '../api/adicionales';
 import { useAuth } from '../context/AuthContext';
 import { PageHeader } from '../components/common/PageHeader';
 import { SearchInput } from '../components/common/SearchInput';
 import { StatusChip } from '../components/common/StatusChip';
 import { formatCurrency, formatDate } from '../utils/formatters';
-import { ESTADOS_PAGO } from '../utils/constants';
-import { generatePaymentReceipt } from '../lib/pdf-generator';
-import type { Pago, CuotaPendiente, RegistrarPagoRequest, DetallePagoResponse } from '../types/pago';
+
+import type { Pago, CuotaPendiente, RegistrarPagoRequest, DetallePagoResponse, TipoAdicional } from '../types/pago';
 import type { Contrato } from '../types/contrato';
 import type { Inquilino } from '../types/inquilino';
 
@@ -43,7 +40,7 @@ interface Notificacion {
   mensaje: string;
   fecha: Date;
   leida: boolean;
-  pagoId?: number;
+  pagoId?: string;
 }
 
 const initialFormData: RegistrarPagoRequest = {
@@ -63,11 +60,11 @@ export default function PagosPage() {
   const [searchTerm, setSearchTerm] = useState('');
 
   // Dialog state for confirming void
-  const [anularDialog, setAnularDialog] = useState<{ open: boolean; id: number | null }>({ open: false, id: null });
+  const [anularDialog, setAnularDialog] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
   const [dialogLoading, setDialogLoading] = useState(false);
 
   // Dialog state for confirm/reject
-  const [actionDialog, setActionDialog] = useState<{ open: boolean; id: number | null; action: 'confirmar' | 'rechazar' | null }>({ open: false, id: null, action: null });
+  const [actionDialog, setActionDialog] = useState<{ open: boolean; id: string | null; action: 'confirmar' | 'rechazar' | null }>({ open: false, id: null, action: null });
 
   // NEW: Estado para motivo de rechazo
   const [motivoRechazo, setMotivoRechazo] = useState('');
@@ -78,25 +75,35 @@ export default function PagosPage() {
   const [registrarLoading, setRegistrarLoading] = useState(false);
   const [formData, setFormData] = useState<RegistrarPagoRequest>(initialFormData);
   const [formError, setFormError] = useState<string | null>(null);
-  const [metodoPagoAnchorEl, setMetodoPagoAnchorEl] = useState<null | HTMLElement>(null);
-
   const [selectedInquilinoId, setSelectedInquilinoId] = useState<string>('');
   const [contratosInquilino, setContratosInquilino] = useState<Contrato[]>([]);
   const [selectedContratoId, setSelectedContratoId] = useState('');
   const [cuotaPendiente, setCuotaPendiente] = useState<CuotaPendiente | null>(null);
   const [detallePago, setDetallePago] = useState<DetallePagoResponse | null>(null);
 
+  // Adicionales / Descuentos state
+  const [tiposAdicionales, setTiposAdicionales] = useState<TipoAdicional[]>([]);
+  const [selectedTipoAdicionalId, setSelectedTipoAdicionalId] = useState('');
+  const [adicionalMonto, setAdicionalMonto] = useState(0);
+  const [adicionalDescripcion, setAdicionalDescripcion] = useState('');
+  const [showAdicionalForm, setShowAdicionalForm] = useState(false);
+  const [descuentoInput, setDescuentoInput] = useState(0);
+  const [actualizandoCalculo, setActualizandoCalculo] = useState(false);
+
+  // Session-local adicionales (not persisted until registration)
+  const [sessionAdicionales, setSessionAdicionales] = useState<Array<{ idTipoAdicionales: string; montoAplicado: number; descripcionManual?: string }>>([]);
+  const sessionTotalAdicionales = useMemo(() => sessionAdicionales.reduce((sum, a) => sum + a.montoAplicado, 0), [sessionAdicionales]);
+
   // Success snackbar
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity?: 'success' | 'error' | 'warning' | 'info' }>({ open: false, message: '' });
 
-  const [contratos, setContratos] = useState<Contrato[]>([]);
   const [inquilinos, setInquilinos] = useState<Inquilino[]>([]);
 
   // NEW: Sistema de notificaciones
   const [notificaciones, setNotificaciones] = useState<Notificacion[]>([]);
   const [notificacionesOpen, setNotificacionesOpen] = useState(false);
 
-  const { canConfirmar, canRechazar, isOperador, user } = useAuth();
+  const { isOperador, canAnular, user } = useAuth();
 
   // Cargar notificaciones del localStorage al iniciar
   useEffect(() => {
@@ -144,8 +151,6 @@ export default function PagosPage() {
       setError(null);
       const dataPagos = await pagosApi.listar();
       setPagos(dataPagos);
-      const dataContratos = await contratosApi.listar();
-      setContratos(dataContratos);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar pagos');
     } finally {
@@ -173,31 +178,6 @@ export default function PagosPage() {
       setLoading(false);
     }
   };
-
-
-  const handleChangeInquilino = async (id: string) => {
-    try {
-      setSelectedInquilino(id);
-
-      if (!id) {
-        setContratos([]);
-        setSelectedContratoId('');
-        setCuotasContrato([]);
-        setCuotaActiva(null);
-        return;
-      }
-
-      const contratos = await contratosApi.listarActivosPorInquilino(id);
-      setContratos(contratos);
-
-    } catch (error) {
-      console.error("Error al obtener contratos:", error);
-    }
-  };
-
-
-
-
 
 
   useEffect(() => {
@@ -275,30 +255,6 @@ export default function PagosPage() {
     }
   };
 
-  // NEW: Generar y descargar recibo PDF
-  const handleDescargarRecibo = (pago: Pago) => {
-    const contratoDelPago = contratos.find(c => c.id === String(pago.contratoId));
-
-    const datosPago = {
-      id: pago.id,
-      inquilino: pago.inquilino,
-      inquilinoDni: contratoDelPago?.dniInquilino || 'N/A',
-      inmueble: pago.inmueble,
-      inmuebleDireccion: contratoDelPago?.direccion || pago.inmueble,
-      nroCuota: pago.nroCuota,
-      fechaVencimiento: pago.fechaVencimiento,
-      fechaPago: pago.fechaPago || new Date().toISOString(),
-      montoBase: pago.monto - pago.mora,
-      mora: pago.mora,
-      montoTotal: pago.monto,
-      registradoPor: user?.nombre || 'Sistema',
-      metodoPago: 'Efectivo' // Puedes obtener esto de la API si lo tienes
-    };
-
-    generatePaymentReceipt(datosPago);
-    setSnackbar({ open: true, message: 'Recibo descargado correctamente', severity: 'success' });
-  };
-
   const handleRegistrarPago = async () => {
     setFormError(null);
 
@@ -321,9 +277,19 @@ export default function PagosPage() {
 
     try {
       setRegistrarLoading(true);
-      await pagosApi.registrar(formData);
+
+      // Persist session adicionales first, then recalculate to get correct total
+      for (const adicional of sessionAdicionales) {
+        await adicionalesApi.crear(formData.idCuota, adicional.idTipoAdicionales, adicional.montoAplicado, adicional.descripcionManual);
+      }
+
+      const calculado = await pagosApi.calcular(selectedContratoId);
+      const montoFinal = calculado.cuota.totalFinal;
+
+      await pagosApi.registrar({ ...formData, monto: montoFinal });
       setRegistrarDialog(false);
       setFormData(initialFormData);
+      setSessionAdicionales([]);
       fetchPagos();
       setSnackbar({
         open: true,
@@ -343,9 +309,8 @@ export default function PagosPage() {
     let result = pagos;
 
     // Filter by Tab (Pago estado)
-    if (tabValue === 1) result = result.filter(p => p.estado === 'Pendiente');
-    else if (tabValue === 2) result = result.filter(p => p.estado === 'Aprobado');
-    else if (tabValue === 3) result = result.filter(p => p.estado === 'Anulado');
+    if (tabValue === 1) result = result.filter(p => p.estado === 'Activo');
+    else if (tabValue === 2) result = result.filter(p => p.estado === 'Anulado');
 
     // Filter by Search Term
     if (searchTerm) {
@@ -361,11 +326,63 @@ export default function PagosPage() {
   }, [pagos, tabValue, searchTerm]);
 
   const contratoActivo = useMemo(() => contratosInquilino.find(c => c.id === selectedContratoId), [contratosInquilino, selectedContratoId]);
-  const importeBase = cuotaPendiente?.precioCuota ?? detallePago?.cuota.precioCuota ?? 0;
-  const moraCalculada = cuotaPendiente?.moraCalculada ?? detallePago?.cuota.moraCalculada ?? 0;
-  const totalFinal = cuotaPendiente?.totalFinal ?? detallePago?.cuota.totalFinal ?? 0;
-  const periodoCuota = cuotaPendiente?.periodo ?? detallePago?.cuota.periodo ?? '';
-  const fechaVencimiento = cuotaPendiente?.fechaVencimiento ?? detallePago?.cuota.fechaVencimiento ?? '';
+  const importeBase = detallePago?.cuota.precioCuota ?? cuotaPendiente?.precioCuota ?? 0;
+  const importeActualizado = detallePago?.cuota.importeActualizado ?? 0;
+  const moraCalculada = detallePago?.cuota.moraCalculada ?? cuotaPendiente?.moraCalculada ?? 0;
+  const totalAdicionalesServidor = detallePago?.cuota.totalAdicionales ?? 0;
+  const totalFinal = detallePago?.cuota.totalFinal ?? cuotaPendiente?.totalFinal ?? 0;
+  const totalDescuentos = detallePago?.cuota.totalDescuentos ?? 0;
+  const periodoCuota = detallePago?.cuota.periodo ?? cuotaPendiente?.periodo ?? '';
+  const fechaVencimiento = detallePago?.cuota.fechaVencimiento ?? cuotaPendiente?.fechaVencimiento ?? '';
+  const dynamicTotal = Math.max(0, importeActualizado + moraCalculada + totalAdicionalesServidor + sessionTotalAdicionales - descuentoInput);
+  const descuentoDiferente = descuentoInput !== totalDescuentos;
+
+  const recalcularCuota = async () => {
+    if (!selectedContratoId) return;
+    try {
+      setActualizandoCalculo(true);
+      const calculado = await pagosApi.calcular(selectedContratoId);
+      setDetallePago(calculado);
+      setDescuentoInput(calculado.cuota.totalDescuentos);
+      setFormData(prev => ({
+        ...prev,
+        monto: calculado.cuota.totalFinal
+      }));
+    } catch (err) {
+      console.error('Error al recalcular:', err);
+    } finally {
+      setActualizandoCalculo(false);
+    }
+  };
+
+  const handleAgregarAdicional = () => {
+    if (!formData.idCuota || !selectedTipoAdicionalId || adicionalMonto <= 0) return;
+    const monto = adicionalMonto;
+    const tipoId = selectedTipoAdicionalId;
+    const descripcion = adicionalDescripcion;
+
+    setSessionAdicionales(prev => [...prev, { idTipoAdicionales: tipoId, montoAplicado: monto, descripcionManual: descripcion || undefined }]);
+    setFormData(prev => ({ ...prev, monto: Math.max(0, (prev.monto ?? 0) + monto) }));
+
+    setShowAdicionalForm(false);
+    setSelectedTipoAdicionalId('');
+    setAdicionalMonto(0);
+    setAdicionalDescripcion('');
+  };
+
+  const handleAplicarDescuento = async () => {
+    if (!formData.idCuota) return;
+    try {
+      setActualizandoCalculo(true);
+      await adicionalesApi.actualizarDescuento(formData.idCuota, descuentoInput);
+      await recalcularCuota();
+      setSnackbar({ open: true, message: 'Descuento aplicado correctamente', severity: 'success' });
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Error al aplicar descuento');
+    } finally {
+      setActualizandoCalculo(false);
+    }
+  };
 
   const resetDialogForm = () => {
     setRegistrarDialog(false);
@@ -376,6 +393,13 @@ export default function PagosPage() {
     setCuotaPendiente(null);
     setDetallePago(null);
     setFormError(null);
+    setTiposAdicionales([]);
+    setShowAdicionalForm(false);
+    setSelectedTipoAdicionalId('');
+    setAdicionalMonto(0);
+    setAdicionalDescripcion('');
+    setDescuentoInput(0);
+    setSessionAdicionales([]);
   };
 
   const resetActionDialog = () => {
@@ -503,12 +527,8 @@ export default function PagosPage() {
           <Typography variant="h4" sx={{ color: '#fff', fontWeight: 300 }}>{pagos.length}</Typography>
         </Box>
         <Box>
-          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.3)', fontWeight: 700, letterSpacing: 1 }}>CONFIRMADOS</Typography>
-          <Typography variant="h4" sx={{ color: '#4caf50', fontWeight: 300 }}>{pagos.filter(p => p.estado === 'Aprobado').length}</Typography>
-        </Box>
-        <Box>
-          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.3)', fontWeight: 700, letterSpacing: 1 }}>EN SOLICITUD</Typography>
-          <Typography variant="h4" sx={{ color: '#ff9800', fontWeight: 300 }}>{pagos.filter(p => p.estado === 'Pendiente').length}</Typography>
+          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.3)', fontWeight: 700, letterSpacing: 1 }}>ACTIVOS</Typography>
+          <Typography variant="h4" sx={{ color: '#4caf50', fontWeight: 300 }}>{pagos.filter(p => p.estado === 'Activo').length}</Typography>
         </Box>
         <Box>
           <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.3)', fontWeight: 700, letterSpacing: 1 }}>ANULADOS</Typography>
@@ -531,9 +551,8 @@ export default function PagosPage() {
               sx={{ minWidth: 150, borderRadius: 2, bgcolor: '#0A0A0A', border: '1px solid rgba(255,255,255,0.1)', '& fieldset': { border: 'none' } }}
             >
               <MenuItem value={0}>Todos</MenuItem>
-              <MenuItem value={1}>Solicitudes</MenuItem>
-              <MenuItem value={2}>Confirmados</MenuItem>
-              <MenuItem value={3}>Anulados</MenuItem>
+              <MenuItem value={1}>Activos</MenuItem>
+              <MenuItem value={2}>Anulados</MenuItem>
             </Select>
           </Box>
 
@@ -601,29 +620,18 @@ export default function PagosPage() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {pago.estado === 'Anulado' && <StatusChip label="Anulado" type="error" variant="outlined" />}
-                          {pago.estado === 'Rechazado' && <StatusChip label="Rechazado" type="error" />}
-                          {pago.estado === 'Aprobado' && <StatusChip label="Confirmado" type="success" />}
-                          {pago.estado === 'Pendiente' && <StatusChip label="Solicitud" type="warning" />}
+                          {pago.estado === 'Anulado' ? (
+                            <StatusChip label="Anulado" type="error" variant="outlined" />
+                          ) : (
+                            <StatusChip label="Activo" type="success" variant="outlined" />
+                          )}
                         </TableCell>
                         <TableCell align="center" sx={{ pr: 4 }}>
-                          {pago.estado === 'Aprobado' && (
-                            <Tooltip title="Descargar Recibo">
-                              <IconButton
-                                color="primary"
-                                sx={{ mr: 1, bgcolor: 'rgba(67, 97, 238, 0.1)' }}
-                                onClick={() => handleDescargarRecibo(pago)}
-                              >
-                                <ReceiptIcon />
-                              </IconButton>
-                            </Tooltip>
-                          )}
-                          {(pago.estado === 'Aprobado' || pago.estado === 'Pendiente') && (
+                          {canAnular && pago.estado === 'Activo' && (
                             <Tooltip title="Anular Pago">
                               <IconButton
-                                color="error"
-                                sx={{ bgcolor: 'rgba(239, 68, 68, 0.1)' }}
                                 onClick={() => setAnularDialog({ open: true, id: pago.id })}
+                                sx={{ color: 'rgba(244, 67, 54, 0.5)', '&:hover': { color: '#f44336', bgcolor: 'rgba(244, 67, 54, 0.1)' } }}
                               >
                                 <CancelIcon />
                               </IconButton>
@@ -821,12 +829,20 @@ export default function PagosPage() {
                   }
 
                   try {
-                    const [pendiente, calculado] = await Promise.all([
+                    const [pendiente, calculado, tipos] = await Promise.all([
                       pagosApi.obtenerCuotaPendiente(cId),
-                      pagosApi.calcular(cId)
+                      pagosApi.calcular(cId),
+                      adicionalesApi.listarTipos()
                     ]);
                     setCuotaPendiente(pendiente);
                     setDetallePago(calculado);
+                    setTiposAdicionales(tipos);
+                    setDescuentoInput(calculado.cuota.totalDescuentos);
+                    setShowAdicionalForm(false);
+                    setSessionAdicionales([]);
+                    setSelectedTipoAdicionalId('');
+                    setAdicionalMonto(0);
+                    setAdicionalDescripcion('');
                     setFormData(prev => ({
                       ...prev,
                       idCuota: pendiente.idCuota,
@@ -880,93 +896,286 @@ export default function PagosPage() {
             </Box>
           </Box>
 
-          <Box>
-            <Typography variant="h6" sx={{ fontWeight: 800, mb: 1 }}>Detalle de la cuota</Typography>
-            <Typography sx={{ color: 'error.main', fontWeight: 800, fontSize: '0.875rem', mb: 3 }}>
-              ATENCION! verificar los datos antes de registrar el pago, en caso contrario debera anular y rehacer el mismo
+          {detallePago && (
+            <Box sx={{ mb: 4, p: 2, border: '1px solid rgba(255,255,255,0.1)', borderRadius: 2 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>Adicionales</Typography>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => setShowAdicionalForm(!showAdicionalForm)}
+                  disabled={actualizandoCalculo}
+                >
+                  {showAdicionalForm ? 'Cancelar' : 'Agregar adicional'}
+                </Button>
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                <MoneyIcon fontSize="small" color="action" />
+                <Typography variant="body2" color="text.secondary">Total adicionales aplicados:</Typography>
+                <Typography variant="body2" sx={{ fontWeight: 800 }}>$ {sessionTotalAdicionales.toLocaleString('es-AR')}</Typography>
+                {actualizandoCalculo && <CircularProgress size={16} />}
+              </Box>
+              {showAdicionalForm && (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2, p: 2, bgcolor: 'rgba(255,255,255,0.03)', borderRadius: 1 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 700 }}>Nuevo adicional</Typography>
+                  <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+                    <Box>
+                      <Typography sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.8rem' }}>Tipo</Typography>
+                      <Select
+                        fullWidth
+                        size="small"
+                        value={selectedTipoAdicionalId}
+                        onChange={(e) => {
+                          const tipoId = e.target.value;
+                          setSelectedTipoAdicionalId(tipoId);
+                          const tipo = tiposAdicionales.find(t => t.id === tipoId);
+                          if (tipo) setAdicionalMonto(tipo.montoBase);
+                        }}
+                      >
+                        {tiposAdicionales.map(t => (
+                          <MenuItem key={t.id} value={t.id}>{t.descripcion}</MenuItem>
+                        ))}
+                      </Select>
+                    </Box>
+                    <Box>
+                      <Typography sx={{ mb: 0.5, fontWeight: 600, fontSize: '0.8rem' }}>Monto</Typography>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        type="number"
+                        value={adicionalMonto}
+                        onChange={(e) => setAdicionalMonto(Number(e.target.value))}
+                      />
+                    </Box>
+                  </Box>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Descripcion (opcional)"
+                    value={adicionalDescripcion}
+                    onChange={(e) => setAdicionalDescripcion(e.target.value)}
+                  />
+                  <Button
+                    variant="contained"
+                    size="small"
+                    onClick={handleAgregarAdicional}
+                    disabled={!selectedTipoAdicionalId || adicionalMonto <= 0}
+                    sx={{ alignSelf: 'flex-end' }}
+                  >
+                    Agregar
+                  </Button>
+                </Box>
+              )}
+            </Box>
+          )}
+
+          <Box
+            sx={{
+              bgcolor: 'rgba(255,255,255,0.02)',
+              borderRadius: 2,
+              border: '1px solid rgba(255,255,255,0.06)',
+              p: 3,
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <ReceiptIcon sx={{ fontSize: 20, opacity: 0.7 }} />
+                Detalle de la cuota
+              </Typography>
+              <Chip
+                label={cuotaPendiente?.estado === 'Vencida' ? 'Vencida' : cuotaPendiente?.estado === 'Pagada' ? 'Pagada' : 'Pendiente'}
+                sx={{
+                  bgcolor: cuotaPendiente?.estado === 'Vencida' ? '#ff4d4f' : cuotaPendiente?.estado === 'Pagada' ? '#10B981' : '#FFFF00',
+                  color: '#000',
+                  fontWeight: 800,
+                  borderRadius: 1,
+                  height: 24
+                }}
+                size="small"
+              />
+            </Box>
+
+            <Typography sx={{ color: 'error.main', fontWeight: 700, fontSize: '0.8rem', mb: 3, opacity: 0.8, letterSpacing: 0.3 }}>
+              Verifique los datos antes de registrar — de lo contrario deberá anular y rehacer el pago
             </Typography>
 
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3, pb: 2, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <PersonIcon fontSize="small" color="action" />
-                  <Typography variant="body2" color="text.secondary">Inquilino</Typography>
+                  <PersonIcon sx={{ fontSize: 18, opacity: 0.5 }} />
+                  <Typography variant="body2" sx={{ color: 'text.secondary', minWidth: 70 }}>Inquilino</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 700 }}>{contratoActivo?.inquilino || '-'}</Typography>
                 </Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <HomeWorkIcon fontSize="small" color="action" />
-                  <Typography variant="body2" color="text.secondary">Inmueble</Typography>
+                  <HomeWorkIcon sx={{ fontSize: 18, opacity: 0.5 }} />
+                  <Typography variant="body2" sx={{ color: 'text.secondary', minWidth: 70 }}>Inmueble</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 700 }}>{contratoActivo?.direccion || contratoActivo?.inmueble || '-'}</Typography>
                 </Box>
               </Box>
 
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 200 }}>
-                  <EditIcon fontSize="small" color="action" />
-                  <Typography variant="body2" color="text.secondary">Nro. de cuota</Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <EditIcon sx={{ fontSize: 18, opacity: 0.5 }} />
+                  <Typography variant="body2" sx={{ color: 'text.secondary', minWidth: 70 }}>Nro. cuota</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 700 }}>
                     {cuotaPendiente?.nroCuota ?? detallePago?.cuota.nroCuota ?? '-'}
                   </Typography>
                 </Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <CalendarIcon fontSize="small" color="action" />
-                  <Typography variant="body2" color="text.secondary">Vencimiento</Typography>
+                  <CalendarIcon sx={{ fontSize: 18, opacity: 0.5 }} />
+                  <Typography variant="body2" sx={{ color: 'text.secondary', minWidth: 70 }}>Vencimiento</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 700 }}>
                     {fechaVencimiento ? new Date(fechaVencimiento).toLocaleDateString('es-AR') : '-'}
                   </Typography>
                 </Box>
-              </Box>
-
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 200 }}>
-                  <CalendarIcon fontSize="small" color="action" />
-                  <Typography variant="body2" color="text.secondary">Periodo</Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <CalendarIcon sx={{ fontSize: 18, opacity: 0.5 }} />
+                  <Typography variant="body2" sx={{ color: 'text.secondary', minWidth: 70 }}>Periodo</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 700 }}>{periodoCuota || '-'}</Typography>
                 </Box>
-                <Chip
-                  label={cuotaPendiente?.estado === 'Vencida' ? 'Vencida' : cuotaPendiente?.estado === 'Pagada' ? 'Pagada' : 'Pendiente'}
-                  sx={{
-                    bgcolor: cuotaPendiente?.estado === 'Vencida' ? '#ff4d4f' : cuotaPendiente?.estado === 'Pagada' ? '#10B981' : '#FFFF00',
-                    color: '#000',
-                    fontWeight: 800,
-                    borderRadius: 1
-                  }}
-                  size="small"
-                />
               </Box>
 
-              {detallePago?.cuota.valorIndiceAplicado ? (
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
-                  <MoneyIcon fontSize="small" color="action" />
-                  <Typography variant="body2" color="text.secondary" sx={{ minWidth: 150 }}>Valor indice aplicado</Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 800 }}>{detallePago.cuota.valorIndiceAplicado.toLocaleString('es-AR')}</Typography>
-                </Box>
-              ) : null}
+              <Box sx={{
+                bgcolor: 'rgba(255,255,255,0.03)',
+                borderRadius: 1.5,
+                p: 2.5,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 2
+              }}>
+                <Typography variant="caption" sx={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, opacity: 0.5, mb: 0.5 }}>
+                  Desglose de importes
+                </Typography>
 
-              {detallePago?.cuota.importeActualizado ? (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <MoneyIcon fontSize="small" color="action" />
-                  <Typography variant="body2" color="text.secondary" sx={{ minWidth: 150 }}>Importe actualizado</Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 800 }}>$ {detallePago.cuota.importeActualizado.toLocaleString('es-AR')}</Typography>
+                  <MoneyIcon sx={{ fontSize: 16, opacity: 0.4 }} />
+                  <Typography variant="body2" sx={{ color: 'text.secondary', minWidth: 170, fontSize: '0.85rem' }}>Precio cuota base</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>$ {importeBase.toLocaleString('es-AR')}</Typography>
                 </Box>
-              ) : null}
 
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
-                <MoneyIcon fontSize="small" color="action" />
-                <Typography variant="body2" color="text.secondary" sx={{ minWidth: 150 }}>Precio cuota base</Typography>
-                <Typography variant="body2" sx={{ fontWeight: 800 }}>$ {importeBase.toLocaleString('es-AR')}</Typography>
+                {detallePago ? (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <MoneyIcon sx={{ fontSize: 16, opacity: 0.4 }} />
+                    <Typography variant="body2" sx={{ color: 'text.secondary', minWidth: 170, fontSize: '0.85rem' }}>Valor índice aplicado</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>{detallePago.cuota.valorIndiceAplicado.toLocaleString('es-AR')}</Typography>
+                  </Box>
+                ) : null}
+
+                {detallePago ? (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <MoneyIcon sx={{ fontSize: 16, opacity: 0.4 }} />
+                    <Typography variant="body2" sx={{ color: 'text.secondary', minWidth: 170, fontSize: '0.85rem' }}>Importe actualizado</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>$ {importeActualizado.toLocaleString('es-AR')}</Typography>
+                  </Box>
+                ) : null}
+
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <MoneyIcon sx={{ fontSize: 16, opacity: 0.4 }} />
+                  <Typography variant="body2" sx={{ color: 'text.secondary', minWidth: 170, fontSize: '0.85rem' }}>Adicionales</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {totalAdicionalesServidor + sessionTotalAdicionales > 0 ? `$ ${(totalAdicionalesServidor + sessionTotalAdicionales).toLocaleString('es-AR')}` : '—'}
+                  </Typography>
+                </Box>
+
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <MoneyIcon sx={{ fontSize: 16, opacity: 0.4 }} />
+                  <Typography variant="body2" sx={{ color: 'text.secondary', minWidth: 170, fontSize: '0.85rem' }}>Adicional por mora</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {moraCalculada > 0 ? `$ ${moraCalculada.toLocaleString('es-AR')}` : '—'}
+                  </Typography>
+                </Box>
+
+                {detallePago && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                    <MoneyIcon sx={{ fontSize: 16, opacity: 0.4 }} />
+                    <Typography variant="body2" sx={{ color: 'text.secondary', minWidth: 170, fontSize: '0.85rem' }}>Descuento</Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <TextField
+                        size="small"
+                        type="number"
+                        value={descuentoInput}
+                        onChange={(e) => {
+                          const val = Math.max(0, Number(e.target.value));
+                          setDescuentoInput(val);
+                        }}
+                        sx={{
+                          width: 130,
+                          '& .MuiOutlinedInput-notchedOutline': {
+                            borderColor: descuentoDiferente ? 'rgba(16, 185, 129, 0.5)' : 'rgba(255,255,255,0.15)'
+                          }
+                        }}
+                        disabled={actualizandoCalculo}
+                      />
+                      <Button
+                        size="small"
+                        variant="contained"
+                        onClick={handleAplicarDescuento}
+                        disabled={actualizandoCalculo || descuentoInput < 0 || !descuentoDiferente}
+                        sx={{
+                          minWidth: 70,
+                          height: 36,
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          bgcolor: descuentoDiferente ? 'rgba(16, 185, 129, 0.2)' : undefined,
+                          color: descuentoDiferente ? '#10B981' : undefined,
+                          '&:hover': descuentoDiferente ? { bgcolor: 'rgba(16, 185, 129, 0.3)' } : undefined,
+                          transition: 'all 0.2s ease'
+                        }}
+                      >
+                        {actualizandoCalculo ? <CircularProgress size={14} /> : 'Aplicar'}
+                      </Button>
+                    </Box>
+                  </Box>
+                )}
               </Box>
 
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <MoneyIcon fontSize="small" color="action" />
-                <Typography variant="body2" color="text.secondary" sx={{ minWidth: 150 }}>Adicional por mora</Typography>
-                <Typography variant="body2" sx={{ fontWeight: 800 }}>$ {moraCalculada.toLocaleString('es-AR')}</Typography>
-              </Box>
-
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
-                <MoneyIcon fontSize="small" color="action" />
-                <Typography variant="body2" sx={{ minWidth: 150, color: 'text.secondary' }}>Total a pagar</Typography>
-                <Typography variant="body2" sx={{ fontWeight: 800 }}>$ {totalFinal.toLocaleString('es-AR')}</Typography>
+              <Box sx={{
+                mt: 1,
+                p: 2.5,
+                borderRadius: 1.5,
+                bgcolor: descuentoDiferente
+                  ? 'rgba(16, 185, 129, 0.06)'
+                  : 'rgba(255,255,255,0.03)',
+                border: `1px solid ${
+                  descuentoDiferente
+                    ? 'rgba(16, 185, 129, 0.2)'
+                    : 'rgba(255,255,255,0.06)'
+                }`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                transition: 'all 0.3s ease'
+              }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                  <MoneyIcon sx={{ fontSize: 22, opacity: 0.7 }} />
+                  <Typography variant="body1" sx={{ fontWeight: 700, fontSize: '1.05rem' }}>Total a pagar</Typography>
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  {descuentoDiferente && (
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        textDecoration: 'line-through',
+                        opacity: 0.4,
+                        fontWeight: 500
+                      }}
+                    >
+                      $ {totalFinal.toLocaleString('es-AR')}
+                    </Typography>
+                  )}
+                  <Typography
+                    variant="h6"
+                    sx={{
+                      fontWeight: 900,
+                      fontSize: '1.25rem',
+                      color: descuentoDiferente ? '#10B981' : 'white',
+                      transition: 'color 0.3s ease'
+                    }}
+                  >
+                    $ {descuentoDiferente ? dynamicTotal.toLocaleString('es-AR') : totalFinal.toLocaleString('es-AR')}
+                  </Typography>
+                </Box>
               </Box>
             </Box>
           </Box>
