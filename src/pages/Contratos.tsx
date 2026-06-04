@@ -18,7 +18,7 @@ import type { Contrato, CrearContratoRequest } from '../types/contrato';
 import type { Inquilino } from '../types/inquilino';
 import type { Inmueble } from '../types/inmueble';
 import { useAuth } from '../context/AuthContext';
-import { ESTADOS_CONTRATO, FRECUENCIAS_AJUSTE } from '../utils/constants';
+import { ESTADOS_CONTRATO, FRECUENCIAS_AJUSTE, MAX_CANTIDAD_CUOTAS } from '../utils/constants';
 import { SearchInput } from '../components/common/SearchInput';
 import { StatusChip } from '../components/common/StatusChip';
 import { formatCurrency, formatDate, toInputDate, isPorVencer } from '../utils/formatters';
@@ -155,8 +155,16 @@ export default function ContratosPage() {
       setFormError('La cantidad de cuotas debe ser mayor a 0');
       return;
     }
+    if (formData.cantidadCuotas > MAX_CANTIDAD_CUOTAS) {
+      setFormError(`La cantidad de cuotas no puede superar ${MAX_CANTIDAD_CUOTAS}`);
+      return;
+    }
     if (formData.precioCuota <= 0) {
       setFormError('El precio de la cuota debe ser mayor a 0');
+      return;
+    }
+    if (formData.tasaMoraMensual < 0) {
+      setFormError('La tasa de mora no puede ser negativa');
       return;
     }
     if (!formData.dniInquilino) {
@@ -165,6 +173,14 @@ export default function ContratosPage() {
     }
     if (!formData.inmuebleId) {
       setFormError('Debe seleccionar un inmueble');
+      return;
+    }
+    if (formData.fechaFin && new Date(formData.fechaFin) <= new Date(formData.fechaCreacion)) {
+      setFormError('La fecha de fin debe ser posterior a la fecha de inicio');
+      return;
+    }
+    if (formData.idTipoIndice && (formData.valorIndiceInicio === null || formData.valorIndiceInicio === undefined)) {
+      setFormError('Debe ingresar el valor del índice seleccionado');
       return;
     }
 

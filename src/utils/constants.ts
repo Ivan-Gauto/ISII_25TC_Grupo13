@@ -29,4 +29,6 @@ export const FRECUENCIAS_PAGO = [
   'Mensual'
 ];
 
+export const MAX_CANTIDAD_CUOTAS = 120;
+
 export const DIAS_AVISO_VENCIMIENTO = 30;
