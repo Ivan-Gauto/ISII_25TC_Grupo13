@@ -84,7 +84,7 @@ export default function PagosPage() {
   // Adicionales / Descuentos state
   const [tiposAdicionales, setTiposAdicionales] = useState<TipoAdicional[]>([]);
   const [selectedTipoAdicionalId, setSelectedTipoAdicionalId] = useState('');
-  const [adicionalMonto, setAdicionalMonto] = useState(0);
+  const [adicionalMontoStr, setAdicionalMontoStr] = useState('');
   const [adicionalDescripcion, setAdicionalDescripcion] = useState('');
   const [showAdicionalForm, setShowAdicionalForm] = useState(false);
   const [descuentoInput, setDescuentoInput] = useState(0);
@@ -356,8 +356,8 @@ export default function PagosPage() {
   };
 
   const handleAgregarAdicional = () => {
-    if (!formData.idCuota || !selectedTipoAdicionalId || adicionalMonto <= 0) return;
-    const monto = adicionalMonto;
+    const monto = Number(adicionalMontoStr);
+    if (!formData.idCuota || !selectedTipoAdicionalId || !adicionalMontoStr || monto <= 0) return;
     const tipoId = selectedTipoAdicionalId;
     const descripcion = adicionalDescripcion;
 
@@ -366,7 +366,7 @@ export default function PagosPage() {
 
     setShowAdicionalForm(false);
     setSelectedTipoAdicionalId('');
-    setAdicionalMonto(0);
+    setAdicionalMontoStr('');
     setAdicionalDescripcion('');
   };
 
@@ -396,7 +396,7 @@ export default function PagosPage() {
     setTiposAdicionales([]);
     setShowAdicionalForm(false);
     setSelectedTipoAdicionalId('');
-    setAdicionalMonto(0);
+    setAdicionalMontoStr('');
     setAdicionalDescripcion('');
     setDescuentoInput(0);
     setSessionAdicionales([]);
@@ -841,7 +841,7 @@ export default function PagosPage() {
                     setShowAdicionalForm(false);
                     setSessionAdicionales([]);
                     setSelectedTipoAdicionalId('');
-                    setAdicionalMonto(0);
+                    setAdicionalMontoStr('');
                     setAdicionalDescripcion('');
                     setFormData(prev => ({
                       ...prev,
@@ -929,7 +929,7 @@ export default function PagosPage() {
                           const tipoId = e.target.value;
                           setSelectedTipoAdicionalId(tipoId);
                           const tipo = tiposAdicionales.find(t => t.id === tipoId);
-                          if (tipo) setAdicionalMonto(tipo.montoBase);
+                          if (tipo) setAdicionalMontoStr(tipo.montoBase.toString());
                         }}
                       >
                         {tiposAdicionales.map(t => (
@@ -943,8 +943,8 @@ export default function PagosPage() {
                         fullWidth
                         size="small"
                         type="number"
-                        value={adicionalMonto}
-                        onChange={(e) => setAdicionalMonto(Number(e.target.value))}
+                        value={adicionalMontoStr}
+                        onChange={(e) => setAdicionalMontoStr(e.target.value)}
                       />
                     </Box>
                   </Box>
@@ -959,7 +959,7 @@ export default function PagosPage() {
                     variant="contained"
                     size="small"
                     onClick={handleAgregarAdicional}
-                    disabled={!selectedTipoAdicionalId || adicionalMonto <= 0}
+                    disabled={!selectedTipoAdicionalId || !adicionalMontoStr || Number(adicionalMontoStr) <= 0}
                     sx={{ alignSelf: 'flex-end' }}
                   >
                     Agregar

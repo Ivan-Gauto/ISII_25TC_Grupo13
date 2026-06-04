@@ -27,10 +27,10 @@ export const pagosApi = {
     throw new Error(response.data.mensaje || 'Error al calcular detalle del pago');
   },
 
-  registrar: async (pagoData: RegistrarPagoRequest): Promise<{ pagoId: string }> => {
+  registrar: async (pagoData: RegistrarPagoRequest): Promise<string | null> => {
     const response = await api.post<ApiResponse<{ pagoId: string }>>('/Pago', pagoData);
-    if (response.data.success && response.data.data) {
-      return response.data.data;
+    if (response.data.success) {
+      return response.data.data?.pagoId ?? null;
     }
     throw new Error(response.data.mensaje || 'Error al registrar el pago');
   },
