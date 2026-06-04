@@ -28,16 +28,16 @@ import { formatCurrency, formatDate, toInputDate, isPorVencer } from '../utils/f
 
 
 const initialFormData: CrearContratoRequest = {
-  fechaCreacion: toInputDate(),
-  fechaFin: toInputDate(new Date(new Date().setMonth(new Date().getMonth() + 12))),
-  cantidadCuotas: 12,
+  fechaCreacion: '',
+  fechaFin: '',
+  cantidadCuotas: 0,
   precioCuota: 0,
   tasaMoraMensual: 0,
   condiciones: '',
   inmuebleId: '',
   dniInquilino: '',
   rolInquilinoId: '',
-  frecuenciaAjuste: FRECUENCIAS_AJUSTE[1],
+  frecuenciaAjuste: '',
   idTipoIndice: '',
   valorIndiceInicio: null,
 };
@@ -168,7 +168,7 @@ export default function ContratosPage() {
       return;
     }
     if (!formData.dniInquilino) {
-      setFormError('El DNI del inquilino es obligatorio');
+      setFormError('Debe seleccionar un inquilino');
       return;
     }
     if (!formData.inmuebleId) {
