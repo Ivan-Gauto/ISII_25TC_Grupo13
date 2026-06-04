@@ -17,6 +17,7 @@ export const formatDate = (dateString: string | undefined): string => {
  * Formatea un string de fecha para inputs tipo date (YYYY-MM-DD)
  */
 export const toInputDate = (date: Date = new Date()): string => {
+  if (isNaN(date.getTime())) return '';
   return date.toISOString().split('T')[0];
 };
 

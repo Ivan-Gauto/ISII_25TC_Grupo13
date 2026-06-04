@@ -203,12 +203,15 @@ export default function ContratosPage() {
       const newData = { ...prev, [field]: value };
       
       // Auto-calculate fechaFin if fechaCreacion or cantidadCuotas change
-      if ((field === 'fechaCreacion' || field === 'cantidadCuotas') && newData.fechaCreacion && newData.cantidadCuotas > 0) {
+      if ((field === 'fechaCreacion' || field === 'cantidadCuotas') && newData.fechaCreacion
+          && newData.cantidadCuotas > 0 && newData.cantidadCuotas <= MAX_CANTIDAD_CUOTAS) {
         const start = new Date(newData.fechaCreacion);
         if (!isNaN(start.getTime())) {
           start.setMonth(start.getMonth() + Number(newData.cantidadCuotas));
           newData.fechaFin = toInputDate(start);
         }
+      } else if (field === 'cantidadCuotas' && newData.cantidadCuotas > MAX_CANTIDAD_CUOTAS) {
+        newData.fechaFin = '';
       }
       
       return newData;
