@@ -18,7 +18,7 @@ import type { Contrato, CrearContratoRequest } from '../types/contrato';
 import type { Inquilino } from '../types/inquilino';
 import type { Inmueble } from '../types/inmueble';
 import { useAuth } from '../context/AuthContext';
-import { ESTADOS_CONTRATO, FRECUENCIAS_AJUSTE } from '../utils/constants';
+import { ESTADOS_CONTRATO, FRECUENCIAS_AJUSTE, MAX_CANTIDAD_CUOTAS } from '../utils/constants';
 import { SearchInput } from '../components/common/SearchInput';
 import { StatusChip } from '../components/common/StatusChip';
 import { formatCurrency, formatDate, toInputDate, isPorVencer } from '../utils/formatters';
@@ -28,16 +28,16 @@ import { formatCurrency, formatDate, toInputDate, isPorVencer } from '../utils/f
 
 
 const initialFormData: CrearContratoRequest = {
-  fechaCreacion: toInputDate(),
-  fechaFin: toInputDate(new Date(new Date().setMonth(new Date().getMonth() + 12))),
-  cantidadCuotas: 12,
+  fechaCreacion: '',
+  fechaFin: '',
+  cantidadCuotas: 0,
   precioCuota: 0,
   tasaMoraMensual: 0,
   condiciones: '',
   inmuebleId: '',
   dniInquilino: '',
   rolInquilinoId: '',
-  frecuenciaAjuste: FRECUENCIAS_AJUSTE[1],
+  frecuenciaAjuste: '',
   idTipoIndice: '',
   valorIndiceInicio: null,
 };
@@ -68,6 +68,7 @@ export default function ContratosPage() {
   const [inmuebles, setInmuebles] = useState<Inmueble[]>([]);
   const [tipoIndices, setTipoIndices] = useState<any[]>([]);
   const [loadingIndice, setLoadingIndice] = useState(false);
+  const [indiceApiError, setIndiceApiError] = useState(false);
 
   // Success snackbar
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string }>({ open: false, message: '' });
@@ -119,6 +120,7 @@ export default function ContratosPage() {
     fetchInquilinos();
     fetchInmuebles();
     fetchTipoIndices();
+    setIndiceApiError(false);
     setCrearDialog(true);
   };
 
@@ -153,16 +155,32 @@ export default function ContratosPage() {
       setFormError('La cantidad de cuotas debe ser mayor a 0');
       return;
     }
+    if (formData.cantidadCuotas > MAX_CANTIDAD_CUOTAS) {
+      setFormError(`La cantidad de cuotas no puede superar ${MAX_CANTIDAD_CUOTAS}`);
+      return;
+    }
     if (formData.precioCuota <= 0) {
       setFormError('El precio de la cuota debe ser mayor a 0');
       return;
     }
+    if (formData.tasaMoraMensual < 0) {
+      setFormError('La tasa de mora no puede ser negativa');
+      return;
+    }
     if (!formData.dniInquilino) {
-      setFormError('El DNI del inquilino es obligatorio');
+      setFormError('Debe seleccionar un inquilino');
       return;
     }
     if (!formData.inmuebleId) {
       setFormError('Debe seleccionar un inmueble');
+      return;
+    }
+    if (formData.fechaFin && new Date(formData.fechaFin) <= new Date(formData.fechaCreacion)) {
+      setFormError('La fecha de fin debe ser posterior a la fecha de inicio');
+      return;
+    }
+    if (formData.idTipoIndice && (formData.valorIndiceInicio === null || formData.valorIndiceInicio === undefined)) {
+      setFormError('Debe ingresar el valor del índice seleccionado');
       return;
     }
 
@@ -199,6 +217,7 @@ export default function ContratosPage() {
 
   const handleIndexChange = async (val: string) => {
     handleFormChange('idTipoIndice', val);
+    setIndiceApiError(false);
 
     if (!val) {
       setFormData(prev => ({ ...prev, valorIndiceInicio: null }));
@@ -207,13 +226,18 @@ export default function ContratosPage() {
 
     setLoadingIndice(true);
     try {
-      // El backend resuelve el caché y la API externa automáticamente
       const res = await indicesApi.obtenerValorActual(val);
       if (res.success && res.data) {
         setFormData(prev => ({ ...prev, valorIndiceInicio: Number(res.data.valor) }));
+        setIndiceApiError(false);
+      } else {
+        setIndiceApiError(true);
+        setFormData(prev => ({ ...prev, valorIndiceInicio: null }));
       }
     } catch (err) {
       console.error('Error al obtener el valor del índice:', err);
+      setIndiceApiError(true);
+      setFormData(prev => ({ ...prev, valorIndiceInicio: null }));
     } finally {
       setLoadingIndice(false);
     }
@@ -510,14 +534,16 @@ export default function ContratosPage() {
                   fullWidth
                   value={formData.inmuebleId || ''}
                   onChange={(e) => handleFormChange('inmuebleId', e.target.value)}
-
                 >
                   <MenuItem value="" disabled>Seleccionar inmueble</MenuItem>
-                  {inmuebles.map((inm) => (
-                    <MenuItem key={inm.id} value={inm.id}>
-                      {inm.direccion}
-                    </MenuItem>
-                  ))}
+                  {inmuebles.length === 0
+                    ? <MenuItem value="" disabled sx={{ fontStyle: 'italic', color: 'text.secondary' }}>No hay inmuebles disponibles</MenuItem>
+                    : inmuebles.map((inm) => (
+                        <MenuItem key={inm.id} value={inm.id}>
+                          {inm.direccion}
+                        </MenuItem>
+                      ))
+                  }
                 </TextField>
               </Box>
               <Box sx={{ flex: '1 1 45%', minWidth: 200 }}>
@@ -529,11 +555,14 @@ export default function ContratosPage() {
                   onChange={(e) => handleFormChange('dniInquilino', e.target.value as string)}
                 >
                   <MenuItem value="" disabled>Seleccionar inquilino</MenuItem>
-                  {inquilinos.map((inq) => (
-                    <MenuItem key={inq.dni} value={inq.dni}>
-                      {inq.nombreCompleto}
-                    </MenuItem>
-                  ))}
+                  {inquilinos.length === 0
+                    ? <MenuItem value="" disabled sx={{ fontStyle: 'italic', color: 'text.secondary' }}>No hay inquilinos disponibles</MenuItem>
+                    : inquilinos.map((inq) => (
+                        <MenuItem key={inq.dni} value={inq.dni}>
+                          {inq.nombreCompleto}
+                        </MenuItem>
+                      ))
+                  }
                 </TextField>
               </Box>
               <Box sx={{ flex: '1 1 45%', minWidth: 200 }}>
@@ -597,6 +626,23 @@ export default function ContratosPage() {
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
                       <CircularProgress size={20} sx={{ color: '#4361ee' }} />
                       <Typography variant="body2" sx={{ color: 'text.secondary' }}>Cargando...</Typography>
+                    </Box>
+                  ) : indiceApiError ? (
+                    <Box sx={{ mt: 0.5 }}>
+                      <Typography variant="caption" sx={{ color: 'warning.main', display: 'block', mb: 0.5 }}>
+                        Sin conexión a la API. Ingresá el valor manualmente:
+                      </Typography>
+                      <TextField
+                        size="small"
+                        placeholder="Ej: 1234.56"
+                        value={formData.valorIndiceInicio ?? ''}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1');
+                          setFormData(prev => ({ ...prev, valorIndiceInicio: raw === '' ? null : parseFloat(raw) }));
+                        }}
+                        slotProps={{ htmlInput: { inputMode: 'decimal' } }}
+                        sx={{ width: '100%' }}
+                      />
                     </Box>
                   ) : (
                     <Typography variant="h6" sx={{ fontWeight: 800, color: '#4361ee', mt: 0.5 }}>
