@@ -1,3 +1,4 @@
+import axios from 'axios';
 import api, { type ApiResponse } from './index';
 import type { Contrato, CrearContratoRequest } from '../types/contrato';
 
@@ -36,11 +37,18 @@ export const contratosApi = {
       rolInquilinoId: contrato.rolInquilinoId || null,
       idTipoIndice: contrato.idTipoIndice || null,
     };
-    const response = await api.post<ApiResponse<{ contratoId: string }>>('/contrato', payload);
-    if (response.data.success && response.data.data) {
-      return response.data.data.contratoId;
+    try {
+      const response = await api.post<ApiResponse<{ contratoId: string }>>('/contrato', payload);
+      if (response.data.success && response.data.data) {
+        return response.data.data.contratoId;
+      }
+      throw new Error(response.data.mensaje || 'Error al crear contrato');
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.data?.mensaje) {
+        throw new Error(err.response.data.mensaje);
+      }
+      throw err;
     }
-    throw new Error(response.data.mensaje || 'Error al crear contrato');
   },
 
   rescindir: async (id: string): Promise<void> => {
