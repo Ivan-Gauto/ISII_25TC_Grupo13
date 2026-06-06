@@ -75,6 +75,12 @@ export default function PagosPage() {
   const [registrarLoading, setRegistrarLoading] = useState(false);
   const [formData, setFormData] = useState<RegistrarPagoRequest>(initialFormData);
   const [formError, setFormError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{
+    inquilino?: string;
+    contrato?: string;
+    metodoPago?: string;
+    descuento?: string;
+  }>({});
   const [selectedInquilinoId, setSelectedInquilinoId] = useState<string>('');
   const [contratosInquilino, setContratosInquilino] = useState<Contrato[]>([]);
   const [selectedContratoId, setSelectedContratoId] = useState('');
@@ -255,19 +261,35 @@ export default function PagosPage() {
     }
   };
 
+  const validateForm = (): boolean => {
+    const errors: typeof fieldErrors = {};
+
+    if (!selectedInquilinoId) errors.inquilino = 'Debe seleccionar un inquilino';
+    if (!selectedContratoId) errors.contrato = 'Debe seleccionar un contrato';
+    if (!formData.idMetodoPago) errors.metodoPago = 'Debe seleccionar un método de pago';
+
+    const totalAntesDescuento =
+      (detallePago?.cuota.importeActualizado ?? cuotaPendiente?.precioCuota ?? 0) +
+      (detallePago?.cuota.moraCalculada ?? cuotaPendiente?.moraCalculada ?? 0) +
+      (detallePago?.cuota.totalAdicionales ?? 0) +
+      sessionTotalAdicionales;
+
+    if (descuentoInput > totalAntesDescuento) {
+      errors.descuento = 'El descuento no puede superar el monto total';
+    }
+
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const handleRegistrarPago = async () => {
     setFormError(null);
+    setFieldErrors({});
 
-    if (!selectedContratoId) {
-      setFormError('Debe seleccionar un contrato');
-      return;
-    }
+    if (!validateForm()) return;
+
     if (!formData.idCuota) {
       setFormError('No se ha cargado una cuota pendiente');
-      return;
-    }
-    if (!formData.idMetodoPago) {
-      setFormError('Debe seleccionar un metodo de pago');
       return;
     }
     if (formData.monto <= 0) {
@@ -357,7 +379,12 @@ export default function PagosPage() {
 
   const handleAgregarAdicional = () => {
     const monto = Number(adicionalMontoStr);
-    if (!formData.idCuota || !selectedTipoAdicionalId || !adicionalMontoStr || monto <= 0) return;
+    if (!formData.idCuota || !selectedTipoAdicionalId || !adicionalMontoStr || monto <= 0) {
+      if (!selectedTipoAdicionalId || !adicionalMontoStr || monto <= 0) {
+        setSnackbar({ open: true, message: 'Complete el tipo y monto del adicional antes de agregarlo', severity: 'warning' });
+      }
+      return;
+    }
     const tipoId = selectedTipoAdicionalId;
     const descripcion = adicionalDescripcion;
 
@@ -393,6 +420,7 @@ export default function PagosPage() {
     setCuotaPendiente(null);
     setDetallePago(null);
     setFormError(null);
+    setFieldErrors({});
     setTiposAdicionales([]);
     setShowAdicionalForm(false);
     setSelectedTipoAdicionalId('');
@@ -780,8 +808,10 @@ export default function PagosPage() {
               <Select
                 fullWidth
                 size="small"
+                error={!!fieldErrors.inquilino}
                 value={selectedInquilinoId}
                 onChange={async (e) => {
+                  setFieldErrors(prev => ({ ...prev, inquilino: undefined, contrato: undefined }));
                   const id = e.target.value as string;
                   setSelectedInquilinoId(id);
                   setSelectedContratoId('');
@@ -809,6 +839,11 @@ export default function PagosPage() {
                   </MenuItem>
                 ))}
               </Select>
+              {fieldErrors.inquilino && (
+                <Typography variant="caption" color="error" sx={{ mt: 0.5, display: 'block' }}>
+                  {fieldErrors.inquilino}
+                </Typography>
+              )}
             </Box>
             <Box>
               <Typography sx={{ mb: 1, fontWeight: 700, fontSize: '0.875rem' }}>Contrato</Typography>
@@ -816,8 +851,10 @@ export default function PagosPage() {
                 fullWidth
                 size="small"
                 disabled={!selectedInquilinoId}
+                error={!!fieldErrors.contrato}
                 value={selectedContratoId}
                 onChange={async (e) => {
+                  setFieldErrors(prev => ({ ...prev, contrato: undefined }));
                   const cId = e.target.value as string;
                   setSelectedContratoId(cId);
 
@@ -868,6 +905,11 @@ export default function PagosPage() {
                   ))
                 )}
               </Select>
+              {fieldErrors.contrato && (
+                <Typography variant="caption" color="error" sx={{ mt: 0.5, display: 'block' }}>
+                  {fieldErrors.contrato}
+                </Typography>
+              )}
             </Box>
           </Box>
 
@@ -878,8 +920,12 @@ export default function PagosPage() {
                 fullWidth
                 size="small"
                 disabled={!detallePago}
+                error={!!fieldErrors.metodoPago}
                 value={formData.idMetodoPago}
-                onChange={(e) => setFormData(prev => ({ ...prev, idMetodoPago: e.target.value }))}
+                onChange={(e) => {
+                  setFieldErrors(prev => ({ ...prev, metodoPago: undefined }));
+                  setFormData(prev => ({ ...prev, idMetodoPago: e.target.value }));
+                }}
               >
                 {!detallePago ? (
                   <MenuItem value="" disabled>Seleccione un contrato primero</MenuItem>
@@ -893,6 +939,11 @@ export default function PagosPage() {
                   ))
                 )}
               </Select>
+              {fieldErrors.metodoPago && (
+                <Typography variant="caption" color="error" sx={{ mt: 0.5, display: 'block' }}>
+                  {fieldErrors.metodoPago}
+                </Typography>
+              )}
             </Box>
           </Box>
 
@@ -1094,15 +1145,18 @@ export default function PagosPage() {
                       <TextField
                         size="small"
                         type="number"
+                        error={!!fieldErrors.descuento}
+                        helperText={fieldErrors.descuento || ''}
                         value={descuentoInput}
                         onChange={(e) => {
+                          setFieldErrors(prev => ({ ...prev, descuento: undefined }));
                           const val = Math.max(0, Number(e.target.value));
                           setDescuentoInput(val);
                         }}
                         sx={{
                           width: 130,
                           '& .MuiOutlinedInput-notchedOutline': {
-                            borderColor: descuentoDiferente ? 'rgba(16, 185, 129, 0.5)' : 'rgba(255,255,255,0.15)'
+                            borderColor: fieldErrors.descuento ? '#ff4d4f' : descuentoDiferente ? 'rgba(16, 185, 129, 0.5)' : 'rgba(255,255,255,0.15)'
                           }
                         }}
                         disabled={actualizandoCalculo}
@@ -1152,7 +1206,7 @@ export default function PagosPage() {
                   <Typography variant="body1" sx={{ fontWeight: 700, fontSize: '1.05rem' }}>Total a pagar</Typography>
                 </Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                  {descuentoDiferente && (
+                  {totalFinal !== dynamicTotal && (
                     <Typography
                       variant="body2"
                       sx={{
@@ -1169,11 +1223,11 @@ export default function PagosPage() {
                     sx={{
                       fontWeight: 900,
                       fontSize: '1.25rem',
-                      color: descuentoDiferente ? '#10B981' : 'white',
+                      color: totalFinal !== dynamicTotal ? '#10B981' : 'white',
                       transition: 'color 0.3s ease'
                     }}
                   >
-                    $ {descuentoDiferente ? dynamicTotal.toLocaleString('es-AR') : totalFinal.toLocaleString('es-AR')}
+                    $ {dynamicTotal.toLocaleString('es-AR')}
                   </Typography>
                 </Box>
               </Box>
