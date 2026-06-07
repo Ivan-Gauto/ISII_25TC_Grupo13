@@ -437,16 +437,31 @@ export default function PagosPage() {
 
   return (
     <Container maxWidth="xl">
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <PageHeader
           title="Gestion de Pagos"
           subtitle="Administra cobros, emite recibos y controla vencimientos."
-          action={{
-            label: "Registrar Pago",
-            icon: <PaymentIcon />,
-            onClick: openRegistrarDialog
-          }}
         />
+
+        {/* Acciones del header */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+          <Button
+            variant="contained"
+            startIcon={<PaymentIcon />}
+            onClick={openRegistrarDialog}
+            sx={{
+              borderRadius: '6px',
+              px: 3,
+              py: 1,
+              bgcolor: '#fff',
+              color: '#000',
+              fontWeight: 600,
+              boxShadow: 'none',
+              '&:hover': { bgcolor: '#f0f0f0' }
+            }}
+          >
+            Registrar Pago
+          </Button>
 
         {/* Boton de notificaciones */}
         <Box sx={{ position: 'relative' }}>
@@ -539,6 +554,7 @@ export default function PagosPage() {
               </Box>
             </Card>
           )}
+        </Box>
         </Box>
       </Box>
 

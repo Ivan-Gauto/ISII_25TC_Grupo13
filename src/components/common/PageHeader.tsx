@@ -12,7 +12,7 @@ interface PageHeaderProps {
 }
 
 export const PageHeader = ({ title, subtitle, action }: PageHeaderProps) => (
-  <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+  <Box sx={{ mb: 0 }}>
     <Box>
       <Typography variant="h4" sx={{ fontWeight: 800, color: 'text.primary', mb: 1 }}>
         {title}
