@@ -17,6 +17,7 @@ import {
   AttachMoneyOutlined as MoneyIcon,
   NotificationsOutlined as NotificationsIcon,
   DeleteOutlined as DeleteIcon,
+  InfoOutlined as InfoIcon,
 } from '@mui/icons-material';
 import { pagosApi } from '../api/pagos';
 import { contratosApi } from '../api/contratos';
@@ -28,7 +29,7 @@ import { SearchInput } from '../components/common/SearchInput';
 import { StatusChip } from '../components/common/StatusChip';
 import { formatCurrency, formatDate } from '../utils/formatters';
 
-import type { Pago, CuotaPendiente, RegistrarPagoRequest, DetallePagoResponse, TipoAdicional } from '../types/pago';
+import type { Pago, CuotaPendiente, RegistrarPagoRequest, DetallePagoResponse, TipoAdicional, CuotaAdicionalDetalle } from '../types/pago';
 import type { Contrato } from '../types/contrato';
 import type { Inquilino } from '../types/inquilino';
 
@@ -1125,7 +1126,12 @@ export default function PagosPage() {
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <MoneyIcon sx={{ fontSize: 16, opacity: 0.4 }} />
                     <Typography variant="body2" sx={{ color: 'text.secondary', minWidth: 170, fontSize: '0.85rem' }}>Valor índice aplicado</Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>{detallePago.cuota.valorIndiceAplicado.toLocaleString('es-AR')}</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {detallePago.cuota.valorIndiceAplicado === 1
+                        ? 'Sin ajuste (período inicial)'
+                        : `${detallePago.cuota.valorIndiceAplicado.toLocaleString('es-AR')} (+${((detallePago.cuota.valorIndiceAplicado - 1) * 100).toFixed(0)}%)`
+                      }
+                    </Typography>
                   </Box>
                 ) : null}
 
@@ -1137,13 +1143,39 @@ export default function PagosPage() {
                   </Box>
                 ) : null}
 
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <MoneyIcon sx={{ fontSize: 16, opacity: 0.4 }} />
-                  <Typography variant="body2" sx={{ color: 'text.secondary', minWidth: 170, fontSize: '0.85rem' }}>Adicionales</Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {totalAdicionalesServidor + sessionTotalAdicionales > 0 ? `$ ${(totalAdicionalesServidor + sessionTotalAdicionales).toLocaleString('es-AR')}` : '—'}
-                  </Typography>
-                </Box>
+                {detallePago?.cuota.detalleAdicionales?.map((item, i) => (
+                  <Box key={`srv-ad-${i}`} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <MoneyIcon sx={{ fontSize: 16, opacity: 0.4 }} />
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 170 }}>
+                      <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.85rem' }}>{item.tipoAdicional}</Typography>
+                      {item.descripcion && (
+                        <Tooltip title={item.descripcion} arrow>
+                          <InfoIcon sx={{ fontSize: 14, opacity: 0.5, cursor: 'help' }} />
+                        </Tooltip>
+                      )}
+                    </Box>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>$ {item.monto.toLocaleString('es-AR')}</Typography>
+                  </Box>
+                ))}
+                {sessionAdicionales.map((item, i) => {
+                  const tipo = tiposAdicionales.find(t => t.id === item.idTipoAdicionales);
+                  return (
+                    <Box key={`ses-ad-${i}`} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <MoneyIcon sx={{ fontSize: 16, opacity: 0.4 }} />
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 170 }}>
+                        <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.85rem' }}>
+                          {tipo?.descripcion ?? 'Adicional manual'}
+                        </Typography>
+                        {item.descripcionManual && (
+                          <Tooltip title={item.descripcionManual} arrow>
+                            <InfoIcon sx={{ fontSize: 14, opacity: 0.5, cursor: 'help' }} />
+                          </Tooltip>
+                        )}
+                      </Box>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>$ {item.montoAplicado.toLocaleString('es-AR')}</Typography>
+                    </Box>
+                  );
+                })}
 
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <MoneyIcon sx={{ fontSize: 16, opacity: 0.4 }} />

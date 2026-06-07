@@ -51,6 +51,12 @@ export interface RegistrarPagoRequest {
   periodo: string;
 }
 
+export interface CuotaAdicionalDetalle {
+  tipoAdicional: string;
+  monto: number;
+  descripcion: string | null;
+}
+
 export interface CuotaCalculada {
   idCuota: string;
   nroCuota: number;
@@ -60,6 +66,7 @@ export interface CuotaCalculada {
   valorIndiceAplicado: number;
   importeActualizado: number;
   totalAdicionales: number;
+  detalleAdicionales: CuotaAdicionalDetalle[];
   totalDescuentos: number;
   diasAtraso: number;
   moraCalculada: number;
