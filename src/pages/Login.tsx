@@ -90,14 +90,6 @@ export default function LoginPage() {
             >
               {isLoading ? <CircularProgress size={24} color="inherit" /> : 'Iniciar Sesión'}
             </Button>
-            <Button 
-              fullWidth 
-              variant="text" 
-              sx={{ mt: 1 }}
-              onClick={() => navigate('/register')}
-            >
-              ¿No tienes cuenta? Regístrate
-            </Button>
           </form>
         </CardContent>
       </Card>
